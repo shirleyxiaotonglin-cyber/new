@@ -1,0 +1,129 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  Bell,
+  CheckSquare,
+  FileText,
+  FolderKanban,
+  LogOut,
+  User,
+} from "lucide-react";
+import { cn } from "@/lib/cn";
+
+export function OrgSidebar({
+  orgId,
+  orgName,
+  userName,
+}: {
+  orgId: string;
+  orgName: string;
+  userName: string;
+}) {
+  const pathname = usePathname();
+  const base = `/org/${orgId}`;
+
+  function activeProjectMgmt() {
+    return (
+      pathname.startsWith(`${base}/projects`) || pathname.includes(`${base}/project/`)
+    );
+  }
+
+  const items: {
+    href: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    match: () => boolean;
+  }[] = [
+    {
+      href: `${base}/projects`,
+      label: "项目管理",
+      icon: FolderKanban,
+      match: activeProjectMgmt,
+    },
+    {
+      href: `${base}/my-tasks`,
+      label: "我的任务",
+      icon: CheckSquare,
+      match: () => pathname.startsWith(`${base}/my-tasks`),
+    },
+    {
+      href: `${base}/messages`,
+      label: "消息中心",
+      icon: Bell,
+      match: () => pathname.startsWith(`${base}/messages`),
+    },
+    {
+      href: `${base}/reports`,
+      label: "工作报告",
+      icon: FileText,
+      match: () => pathname.startsWith(`${base}/reports`),
+    },
+    {
+      href: `${base}/profile`,
+      label: "个人中心",
+      icon: User,
+      match: () => pathname.startsWith(`${base}/profile`),
+    },
+  ];
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    window.location.href = "/login";
+  }
+
+  return (
+    <aside className="flex h-full min-h-screen w-60 shrink-0 flex-col bg-red-600 text-white shadow-md md:h-auto">
+      <div className="border-b border-red-500 px-4 pb-5 pt-6 md:pt-12">
+        <Link href="/" className="block text-lg font-bold tracking-tight text-white">
+          ProjectHub
+        </Link>
+        <p className="mt-1 truncate text-sm text-red-100" title={orgName}>
+          {orgName}
+        </p>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-2 py-4">
+        <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-red-200">
+          导航
+        </p>
+        <ul className="space-y-0.5">
+          {items.map(({ href, label, icon: Icon, match }) => {
+            const active = match();
+            return (
+              <li key={href}>
+                <Link
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                    active
+                      ? "bg-red-800 font-medium text-white shadow-sm"
+                      : "text-red-50 hover:bg-red-700",
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0 opacity-90" />
+                  {label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      <div className="border-t border-red-500 p-3">
+        <p className="truncate px-1 text-xs text-red-100" title={userName}>
+          {userName}
+        </p>
+        <button
+          type="button"
+          onClick={() => void logout()}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-white px-3 py-2.5 text-sm font-medium text-red-600 shadow-sm transition hover:bg-red-50"
+        >
+          <LogOut className="h-4 w-4" />
+          退出登录
+        </button>
+      </div>
+    </aside>
+  );
+}

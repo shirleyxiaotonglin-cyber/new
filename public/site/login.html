@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>跳转登录…</title>
+    <script>
+      /* 由 Next 托管的 /site/ 下页面：直接进应用登录 */
+      (function () {
+        if (location.pathname.indexOf("/site/") === 0) {
+          location.replace(location.origin + "/login");
+        }
+      })();
+    </script>
+  </head>
+  <body
+    style="
+      font-family: system-ui, sans-serif;
+      max-width: 32rem;
+      margin: 4rem auto;
+      padding: 1rem;
+      color: #333;
+    "
+  >
+    <h1 style="color: #b91c1c">未检测到 Next 应用</h1>
+    <p>若本文件由「仅静态服务器」打开，请先在项目根目录运行：</p>
+    <pre style="background: #1e1e1e; color: #eee; padding: 1rem; border-radius: 8px">npm run setup
+npm run dev</pre>
+    <p>然后访问：<a href="http://127.0.0.1:3000/login">http://127.0.0.1:3000/login</a></p>
+    <p><a href="index.html">返回官网</a></p>
+  </body>
+</html>

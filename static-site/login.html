@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>登录 — ProjectHub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-gray-50 px-4 py-16 text-gray-900">
+    <div class="mx-auto max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-lg">
+      <h1 class="text-center text-xl font-bold text-red-600">进入系统登录</h1>
+      <p class="mt-4 text-center text-sm text-gray-600">
+        若已在本机启动 Next（<code class="rounded bg-gray-100 px-1">npm run dev</code>），点击下方：
+      </p>
+      <a
+        href="http://127.0.0.1:3000/login"
+        class="mt-6 block w-full rounded-lg bg-red-600 py-3 text-center text-sm font-semibold text-white shadow hover:bg-red-700"
+        >打开应用登录页（端口 3000）</a
+      >
+      <p class="mt-4 text-center text-xs text-gray-500">纯静态托管没有 /login 路由，必须用上方链接或先启动 Next。</p>
+      <a href="index.html" class="mt-8 block text-center text-sm text-red-600 hover:underline">← 返回官网</a>
+    </div>
+  </body>
+</html>

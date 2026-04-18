@@ -1,0 +1,385 @@
+// 本地可用 Docker Postgres（见 docker-compose.yml）或 Neon；DATABASE_URL 指向 Postgres。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orgMemberships OrgMember[]
+  teamMembers    TeamMember[]
+  projectMembers ProjectMember[]
+  tasksAssigned  Task[]         @relation("TaskAssignee")
+  taskAssistants TaskAssistant[]
+  comments       Comment[]
+  mentions       CommentMention[]
+  activities     Activity[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  filesUploaded  FileAsset[]
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  departments Department[]
+  teams       Team[]
+  projects    Project[]
+  members     OrgMember[]
+  roles       CustomRole[]
+  auditLogs   AuditLog[]
+  files       FileAsset[]
+}
+
+/// OrgRole: OWNER | ADMIN | MEMBER | GUEST
+model OrgMember {
+  id           String   @id @default(cuid())
+  orgId        String
+  userId       String
+  role         String   @default("MEMBER")
+  customRoleId String?
+  joinedAt     DateTime @default(now())
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customRole CustomRole?  @relation(fields: [customRoleId], references: [id])
+
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@index([userId])
+}
+
+model Department {
+  id       String @id @default(cuid())
+  orgId    String
+  name     String
+  parentId String?
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  parent Department?  @relation("DeptTree", fields: [parentId], references: [id])
+  child  Department[] @relation("DeptTree")
+}
+
+model Team {
+  id    String @id @default(cuid())
+  orgId String
+  name  String
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members TeamMember[]
+}
+
+model TeamMember {
+  id     String @id @default(cuid())
+  teamId String
+  userId String
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+/// permissions: JSON string — ["project:read","task:write"]
+model CustomRole {
+  id          String   @id @default(cuid())
+  orgId       String
+  name        String
+  description String?
+  permissions String   @default("[]")
+  createdAt   DateTime @default(now())
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members OrgMember[]
+
+  @@unique([orgId, name])
+}
+
+/// template: ENGINEERING | MARKETING | LOCALIZATION | EVENT | CUSTOM
+/// status: ACTIVE | ARCHIVED
+model Project {
+  id           String    @id @default(cuid())
+  orgId        String
+  name         String
+  description  String?
+  template     String    @default("CUSTOM")
+  status       String    @default("ACTIVE")
+  departmentId String?
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  org         Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members     ProjectMember[]
+  tasks       Task[]
+  tags        Tag[]
+  workflows   Workflow[]
+  automations AutomationRule[]
+}
+
+/// ProjectMemberRole: OWNER | ADMIN | MEMBER | GUEST
+model ProjectMember {
+  id        String @id @default(cuid())
+  projectId String
+  userId    String
+  role      String @default("MEMBER")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+/// TaskStatus: TODO | DOING | DONE | BLOCKED
+/// TaskPriority: P0 | P1 | P2 | P3
+model Task {
+  id          String    @id @default(cuid())
+  projectId   String
+  title       String
+  description String?
+  status      String    @default("TODO")
+  priority    String    @default("P2")
+  assigneeId  String?
+  dueDate     DateTime?
+  parentId    String?
+  sortOrder   Int       @default(0)
+  startDate   DateTime?
+  /// 完成度 0–100，用于甘特图进度条着色
+  progress    Float     @default(0)
+
+  project                  Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee                 User?              @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  parent                   Task?              @relation("Subtasks", fields: [parentId], references: [id])
+  subtasks                 Task[]             @relation("Subtasks")
+  tags                     TaskTag[]
+  dependenciesSuccessors   TaskDependency[]   @relation("DepSuccessor")
+  dependenciesPredecessors TaskDependency[]   @relation("DepPredecessor")
+  assistants               TaskAssistant[]
+  comments                 Comment[]
+  attachments              Attachment[]
+  activities               Activity[]
+  aiInsights               AiInsight[]
+
+  @@index([projectId])
+  @@index([assigneeId])
+  @@index([dueDate])
+}
+
+/// 任务协助人（项目成员中的多位协作方）
+model TaskAssistant {
+  taskId String
+  userId String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([taskId])
+  @@index([userId])
+}
+
+model TaskDependency {
+  id            String @id @default(cuid())
+  successorId   String
+  predecessorId String
+
+  successor   Task @relation("DepSuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+  predecessor Task @relation("DepPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+
+  @@unique([successorId, predecessorId])
+}
+
+model Tag {
+  id        String @id @default(cuid())
+  projectId String
+  name      String
+  color     String @default("#6366f1")
+
+  project Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   TaskTag[]
+
+  @@unique([projectId, name])
+}
+
+model TaskTag {
+  taskId String
+  tagId  String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  body      String
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task     Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Comment?         @relation("CommentThread", fields: [parentId], references: [id])
+  replies  Comment[]        @relation("CommentThread")
+  mentions CommentMention[]
+}
+
+model CommentMention {
+  id        String @id @default(cuid())
+  commentId String
+  userId    String
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+}
+
+model Attachment {
+  id          String @id @default(cuid())
+  taskId      String
+  fileAssetId String
+
+  task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fileAsset FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+}
+
+model FileAsset {
+  id           String   @id @default(cuid())
+  orgId        String
+  uploadedById String
+  fileKey      String
+  name         String
+  mimeType     String
+  size         Int
+  version      Int      @default(1)
+  parentFileId String?
+  createdAt    DateTime @default(now())
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  uploadedBy  User         @relation(fields: [uploadedById], references: [id])
+  parentFile  FileAsset?   @relation("FileVersion", fields: [parentFileId], references: [id])
+  childFiles  FileAsset[]  @relation("FileVersion")
+  attachments Attachment[]
+}
+
+/// action: TASK_CREATED | TASK_UPDATED | ...
+model Activity {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String?
+  action    String
+  meta      String?
+  createdAt DateTime @default(now())
+
+  task Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String?
+  resource  String
+  action    String
+  diff      String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User?        @relation(fields: [userId], references: [id])
+
+  @@index([orgId, createdAt])
+}
+
+/// channel: IN_APP | EMAIL | PUSH
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String?
+  channel   String   @default("IN_APP")
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+model Workflow {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  project     Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  states      WorkflowState[]
+  transitions WorkflowTransition[]
+}
+
+model WorkflowState {
+  id         String @id @default(cuid())
+  workflowId String
+  name       String
+  category   String
+
+  workflow    Workflow             @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  transitions WorkflowTransition[] @relation("FromState")
+  incoming    WorkflowTransition[] @relation("ToState")
+}
+
+model WorkflowTransition {
+  id          String @id @default(cuid())
+  workflowId  String
+  fromStateId String
+  toStateId   String
+  name        String?
+
+  workflow  Workflow      @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  fromState WorkflowState @relation("FromState", fields: [fromStateId], references: [id], onDelete: Cascade)
+  toState   WorkflowState @relation("ToState", fields: [toStateId], references: [id], onDelete: Cascade)
+}
+
+model AutomationRule {
+  id        String @id @default(cuid())
+  projectId String
+  name      String
+  trigger   String
+  condition String?
+  actions   String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model AiInsight {
+  id        String   @id @default(cuid())
+  taskId    String
+  kind      String
+  payload   String
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}

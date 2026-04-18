@@ -1,0 +1,31 @@
+import { prisma } from "./prisma";
+import { OrgRole, ProjectMemberRole } from "./constants";
+
+export async function requireOrgMember(orgId: string, userId: string) {
+  return prisma.orgMember.findUnique({
+    where: { orgId_userId: { orgId, userId } },
+  });
+}
+
+export async function requireProjectAccess(projectId: string, userId: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { members: { where: { userId } } },
+  });
+  if (!project) return null;
+  const projectMember = project.members[0];
+  if (!projectMember) return null;
+  const orgMember = await requireOrgMember(project.orgId, userId);
+  if (!orgMember) return null;
+  return { project, orgMember, projectMember };
+}
+
+export function canEditTask(orgRole: string, projectRole: string) {
+  if (orgRole === OrgRole.GUEST) return false;
+  if (orgRole === OrgRole.OWNER || orgRole === OrgRole.ADMIN) return true;
+  return (
+    projectRole === ProjectMemberRole.OWNER ||
+    projectRole === ProjectMemberRole.ADMIN ||
+    projectRole === ProjectMemberRole.MEMBER
+  );
+}

@@ -1,0 +1,19 @@
+# 本地 Postgres，与 prisma/schema.prisma（postgresql）配套。
+# 启动：docker compose up -d
+# .env：DATABASE_URL="postgresql://postgres:postgres@localhost:5432/projecthub"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: projecthub
+    volumes:
+      - pgdata_projecthub:/var/lib/postgresql/data
+
+volumes:
+  pgdata_projecthub:
