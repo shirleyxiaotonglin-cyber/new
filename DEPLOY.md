@@ -78,6 +78,59 @@ npx prisma migrate deploy
 
 部署完成后用 `https://你的域名` 访问。若登录态/重定向异常，检查 `NEXT_PUBLIC_APP_URL` 是否与浏览器地址完全一致（含 `https`）。
 
+---
+
+## 重新接入 OpenRouter（智能任务解析 / 计划表 / 工作报告）
+
+智能相关功能走 **OpenRouter** 统一网关（`https://openrouter.ai/api/v1/chat/completions`），与 DeepSeek / OpenAI 官网单独申请的 Key **不是同一套**；必须用 **OpenRouter 控制台里的 Key** 和在 OpenRouter 模型列表里显示的 **完整模型 ID**（形如 `deepseek/deepseek-v3.2`，不能只写 `deepseek`）。
+
+### 1. 在 OpenRouter 侧准备
+
+1. 打开 [https://openrouter.ai](https://openrouter.ai) 注册并登录。  
+2. **Credits**：充值或绑定支付方式，保证有余额（调用按 token 计费）。  
+3. **Keys**：**Keys** 页面创建 API Key，复制形如 `sk-or-v1-...` 的字符串（只显示一次，请妥善保存）。  
+4. **模型**：在 [Models](https://openrouter.ai/models) 搜索你要用的模型（如 DeepSeek），点开详情页，复制 **完整 Model ID**（含 `厂商/模型名`），例如 `deepseek/deepseek-v3.2`。
+
+### 2. 在本项目里配置环境变量
+
+复制 `.env.example` 中 OpenRouter 相关注释，在项目根目录 **`.env`**（本地）写入至少：
+
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `OPENROUTER_API_KEY` | 是 | 上一步复制的 `sk-or-v1-...` |
+| `OPENROUTER_MODEL` | 否 | 不填时服务端默认 `openai/gpt-4o-mini`；用 DeepSeek 等须填完整 ID |
+| `OPENROUTER_ANALYZE_TIMEOUT_MS` | 否 | 智能解析等待 OpenRouter 的上限（毫秒），默认 `45000`；模型很慢可调高（见 `.env.example`） |
+| `OPENROUTER_FALLBACK_MODEL` | 否 | 主模型若遇 403，会自动改试该备用模型 |
+| `OPENROUTER_HTTP_REFERER` | 否 | 生产环境若 Referer 审核异常，可设为站点根 URL `https://你的域名` |
+
+本地改完 **`.env`** 后需 **重启** `npm run dev`。
+
+### 3. 在 Vercel（或其它托管）上配置
+
+1. 进入项目 → **Settings** → **Environment Variables**。  
+2. 添加上表同名变量；**Value** 不要带引号。  
+3. 至少勾选 **Production**（需要的话再勾选 Preview）。  
+4. **保存后必须 Redeploy**（Deployments → 最新部署右侧 **⋯** → **Redeploy**），否则线上进程仍用旧环境。
+
+### 4. 验证是否接通
+
+1. 浏览器登录应用 → 进入任意项目 → 顶部切到 **AI / 智能任务解析**。  
+2. 若显示 **「智能助手已就绪」** 且下方有 **模型标识**（与 `OPENROUTER_MODEL` 一致），说明 status 接口已读到 Key 与模型。  
+3. 粘贴一段不少于约 10 字的文本，点 **预览解析结果**：应返回真实任务列表；若返回 **示例任务** 且 `fallback: true`，多为超时、余额或模型 ID 错误，见下一步。
+
+### 5. 常见问题
+
+| 现象 | 处理方向 |
+|------|-----------|
+| 页面上长期「智能助手未开通」 | 线上未注入 `OPENROUTER_API_KEY` 或未 Redeploy |
+| 接口返回示例任务 / `fallback: true` | 超时：可调 `OPENROUTER_ANALYZE_TIMEOUT_MS`、升级 Vercel 套餐延长函数时间；或换更快模型 |
+| OpenRouter 报错 / 402 / 余额 | 在 OpenRouter 控制台充值 |
+| 403 / 模型不可用 | 核对模型 ID 是否与官网一致；可设 `OPENROUTER_FALLBACK_MODEL` |
+
+更细的字段说明仍以仓库根目录 **`.env.example`** 为准。
+
+---
+
 ### 6. 演示数据（可选）
 
 在**本机**临时把 `.env` 的 `DATABASE_URL` 改成与生产相同，然后：
