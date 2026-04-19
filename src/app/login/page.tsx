@@ -286,8 +286,6 @@ export default function LoginPage() {
                 {loading ? "处理中…" : "演示账号一键登录"}
               </button>
               <p className="text-center text-[11px] leading-relaxed text-gray-500">
-                演示账号：demo@projecthub.io / demo123456
-                <br />
                 首次使用会自动创建演示数据。若线上提示无法演示，请在部署环境配置{" "}
                 <code className="rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700">
                   NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true
