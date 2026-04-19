@@ -142,7 +142,7 @@ export function MyTasksPlanPanel({
             type="button"
             disabled={loadingScope !== null || aiStatus?.configured === false}
             onClick={() => void generate("week")}
-            className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-800 shadow-sm hover:bg-red-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
           >
             {loadingScope === "week" ?
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

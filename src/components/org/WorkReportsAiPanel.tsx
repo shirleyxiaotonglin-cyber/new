@@ -159,6 +159,7 @@ export function WorkReportsAiPanel({
               loading={loadingScope === "week"}
               disabled={loadingScope !== null || aiStatus?.configured === false}
               onClick={() => void generate("week")}
+              primary
               compact
             />
           }
@@ -175,6 +176,7 @@ export function WorkReportsAiPanel({
               loading={loadingScope === "month"}
               disabled={loadingScope !== null || aiStatus?.configured === false}
               onClick={() => void generate("month")}
+              primary
               compact
             />
           }
