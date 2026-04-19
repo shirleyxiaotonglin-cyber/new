@@ -20,14 +20,19 @@ export async function requireProjectAccess(projectId: string, userId: string) {
   return { project, orgMember, projectMember };
 }
 
-export function canEditTask(orgRole: string, projectRole: string) {
-  if (orgRole === OrgRole.GUEST) return false;
-  if (orgRole === OrgRole.OWNER || orgRole === OrgRole.ADMIN) return true;
+function projectMemberCanEditTasks(projectRole: string) {
   return (
     projectRole === ProjectMemberRole.OWNER ||
     projectRole === ProjectMemberRole.ADMIN ||
     projectRole === ProjectMemberRole.MEMBER
   );
+}
+
+/** 任务编辑、交付物上传等同权：组织「访客」若已是本项目成员，仍可在项目内协作。 */
+export function canEditTask(orgRole: string, projectRole: string) {
+  if (orgRole === OrgRole.GUEST) return projectMemberCanEditTasks(projectRole);
+  if (orgRole === OrgRole.OWNER || orgRole === OrgRole.ADMIN) return true;
+  return projectMemberCanEditTasks(projectRole);
 }
 
 /** 与任务编辑权限一致：可上传交付物 */
