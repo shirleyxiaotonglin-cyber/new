@@ -213,6 +213,8 @@ export function ProjectsHub({
 
         {err && <p className="text-sm text-red-600">{err}</p>}
 
+        <WorkspaceDeliverablesHub workspaceOrgId={workspaceOrgId} />
+
         <section>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
             <Rocket className="h-5 w-5 text-red-600" />
@@ -292,8 +294,6 @@ export function ProjectsHub({
             </ul>
           )}
         </section>
-
-        <WorkspaceDeliverablesHub workspaceOrgId={workspaceOrgId} />
       </div>
     </div>
   );

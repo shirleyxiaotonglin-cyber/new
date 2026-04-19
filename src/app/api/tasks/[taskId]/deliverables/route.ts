@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+/** 大文件 multipart 上传时延长运行时间（如部署在 Vercel） */
+export const maxDuration = 60;
 import { nanoid } from "nanoid";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";

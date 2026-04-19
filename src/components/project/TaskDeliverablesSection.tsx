@@ -64,7 +64,7 @@ export function TaskDeliverablesSection({
 }) {
   const [items, setItems] = useState<DeliverableItem[]>([]);
   const [loading, setLoading] = useState(true);
-  /** null = 尚未从接口拉取，禁止上传，避免在「未开通存储」时误发请求 */
+  /** true = 接口确认已配置存储；false = 未开通；null = 加载失败或尚未确认，仍可尝试上传（503 会明确设为 false） */
   const [storageConfigured, setStorageConfigured] = useState<boolean | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
@@ -79,19 +79,28 @@ export function TaskDeliverablesSection({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/tasks/${taskId}/deliverables`, { credentials: "include" });
+      const res = await fetch(`/api/tasks/${taskId}/deliverables`, {
+        credentials: "include",
+        cache: "no-store",
+      });
       const j = (await res.json()) as {
         items?: DeliverableItem[];
         storageConfigured?: boolean;
         error?: string;
       };
-      if (!res.ok) throw new Error(typeof j.error === "string" ? j.error : "加载失败");
+      if (!res.ok) {
+        setItems([]);
+        setStorageConfigured(null);
+        setError(typeof j.error === "string" ? j.error : `加载失败（${res.status}）`);
+        return;
+      }
       setItems(Array.isArray(j.items) ? j.items : []);
+      /** 仅以接口返回值为准；网络错误时不要假定「未开通存储」，否则会永久禁用上传 */
       setStorageConfigured(j.storageConfigured === true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
       setItems([]);
-      setStorageConfigured(false);
+      setStorageConfigured(null);
     } finally {
       setLoading(false);
     }
@@ -104,11 +113,9 @@ export function TaskDeliverablesSection({
   async function uploadFiles(files: FileList | File[]) {
     const list = Array.from(files);
     if (list.length === 0) return;
-    if (storageConfigured !== true) {
+    if (storageConfigured === false) {
       setError(
-        storageConfigured === false ?
-          "文件上传未开通：请在环境中配置 SUPABASE_URL 与 SUPABASE_SERVICE_ROLE_KEY，并创建 Storage 存储桶。"
-        : "正在检测存储配置，请稍候再试。",
+        "文件上传未开通：请在服务端配置 SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY，并在 Supabase 创建与 SUPABASE_STORAGE_BUCKET 一致的私有存储桶。",
       );
       return;
     }
@@ -187,6 +194,7 @@ export function TaskDeliverablesSection({
         setError(null);
       }
       await load();
+      window.dispatchEvent(new CustomEvent("ph-deliverables-changed"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "上传失败");
     } finally {
@@ -208,6 +216,7 @@ export function TaskDeliverablesSection({
       return;
     }
     await load();
+    window.dispatchEvent(new CustomEvent("ph-deliverables-changed"));
   }
 
   const canPreviewImage = (mime: string) => mime.startsWith("image/");
@@ -250,7 +259,7 @@ export function TaskDeliverablesSection({
           multiple
           className="sr-only"
           accept="image/*,video/*,application/pdf,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.json,.js,.ts,.tsx,.css,.html"
-          disabled={uploading || storageConfigured !== true}
+          disabled={uploading || storageConfigured === false}
           onChange={(e) => {
             const f = e.target.files;
             e.target.value = "";
@@ -272,7 +281,7 @@ export function TaskDeliverablesSection({
           </select>
           <button
             type="button"
-            disabled={uploading || storageConfigured !== true}
+            disabled={uploading || storageConfigured === false}
             className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
             onClick={() => inputRef.current?.click()}
           >
@@ -282,7 +291,18 @@ export function TaskDeliverablesSection({
             {uploading ? `上传中${uploadPct !== null ? ` ${uploadPct}%` : ""}` : "选择文件"}
           </button>
         </div>
-        <p className="mt-2 text-[10px] text-gray-500">支持拖拽多个文件到此；单文件最大约 52MB。</p>
+        <p className="mt-2 text-[10px] text-gray-500">
+          支持拖拽多个文件到此；单文件最大约 52MB。存储未配置时上传将提示失败。
+        </p>
+        {storageConfigured === null && !loading ?
+          <button
+            type="button"
+            className="mt-2 text-[10px] font-medium text-red-700 underline hover:text-red-800"
+            onClick={() => void load()}
+          >
+            列表加载异常？点击重新检测存储与文件列表
+          </button>
+        : null}
       </div>
 
       {error ?
