@@ -56,6 +56,27 @@ const OutputSchema = z.object({
   tasks: z.array(ParsedTaskSchema).max(40),
 });
 
+/** 将模型输出的 JSON 文本转为结构化任务；失败返回 null（便于触发第二次模型请求） */
+function tryParseStructured(rawJson: string): z.infer<typeof OutputSchema> | null {
+  try {
+    const obj = parseLenientJson(rawJson);
+    const coerced = coerceAnalyzeOutput(obj);
+    const out = OutputSchema.safeParse(coerced);
+    if (!out.success) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("[ai/analyze] Zod 校验失败:", out.error.flatten());
+      }
+      return null;
+    }
+    return out.data;
+  } catch (parseErr: unknown) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[ai/analyze] JSON 解析失败:", parseErr, rawJson.slice(0, 600));
+    }
+    return null;
+  }
+}
+
 type ProjectMemberRow = { userId: string; name: string; email: string };
 
 function buildSystemPrompt(todayISO: string, memberLines: string[]) {
@@ -237,20 +258,57 @@ export async function POST(req: Request, ctx: Ctx) {
   const todayISO = format(new Date(), "yyyy-MM-dd");
   const systemPrompt = buildSystemPrompt(todayISO, memberLines);
 
-  let rawJson: string;
+  const chatMessages: { role: "system" | "user"; content: string }[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: parsedBody.data.text.slice(0, 32000) },
+  ];
+
+  let structured: z.infer<typeof OutputSchema>;
+
   try {
-    const { content } = await openRouterComplete(
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: parsedBody.data.text.slice(0, 32000) },
-      ],
-      {
-        temperature: 0.25,
-        maxTokens: 8192,
-        responseFormat: { type: "json_object" },
-      },
-    );
-    rawJson = extractJsonObject(content);
+    const { content: c1 } = await openRouterComplete(chatMessages, {
+      temperature: 0.25,
+      maxTokens: 8192,
+      responseFormat: { type: "json_object" },
+      skipRefusal: true,
+    });
+    let structuredInner = tryParseStructured(extractJsonObject(c1));
+
+    const needsRetry =
+      structuredInner === null ||
+      structuredInner.tasks.length === 0;
+
+    if (needsRetry) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[ai/analyze] 首次结果不可用，改用无 JSON 强制模式再请求一次…");
+      }
+      try {
+        const { content: c2 } = await openRouterComplete(chatMessages, {
+          temperature: 0.35,
+          maxTokens: 8192,
+          skipRefusal: true,
+        });
+        const second = tryParseStructured(extractJsonObject(c2));
+        if (second && second.tasks.length > 0) {
+          structuredInner = second;
+        } else if (structuredInner === null && second) {
+          structuredInner = second;
+        }
+      } catch (retryErr: unknown) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("[ai/analyze] 第二次 OpenRouter 请求失败:", retryErr);
+        }
+      }
+    }
+
+    if (structuredInner === null) {
+      return NextResponse.json(
+        { error: AI_TASK_PARSE_USER_MESSAGE, code: "PARSE_PIPELINE_FAILED" },
+        { status: 422 },
+      );
+    }
+
+    structured = structuredInner;
   } catch (e: unknown) {
     const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
     if (process.env.NODE_ENV === "development") {
@@ -293,34 +351,6 @@ export async function POST(req: Request, ctx: Ctx) {
         code: "OPENROUTER_ERROR",
       },
       { status: 502 },
-    );
-  }
-
-  let structured: z.infer<typeof OutputSchema>;
-  try {
-    const obj = parseLenientJson(rawJson);
-    const coerced = coerceAnalyzeOutput(obj);
-    const out = OutputSchema.safeParse(coerced);
-    if (!out.success) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("[ai/analyze] Zod 校验失败（coerce 后仍不通过）:", out.error.flatten());
-      }
-      return NextResponse.json(
-        {
-          error: AI_TASK_PARSE_USER_MESSAGE,
-          code: "OUTPUT_VALIDATION_ERROR",
-        },
-        { status: 422 },
-      );
-    }
-    structured = out.data;
-  } catch (parseErr: unknown) {
-    if (process.env.NODE_ENV === "development") {
-      console.error("[ai/analyze] JSON 解析失败:", parseErr, "rawJson 前 500 字:", rawJson.slice(0, 500));
-    }
-    return NextResponse.json(
-      { error: AI_TASK_PARSE_USER_MESSAGE, code: "JSON_SYNTAX" },
-      { status: 422 },
     );
   }
 

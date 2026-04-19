@@ -155,6 +155,11 @@ export function coerceAnalyzeOutput(parsed: unknown): { tasks: unknown[] } {
     const o = parsed as Record<string, unknown>;
     if (Array.isArray(o.tasks)) {
       tasks = o.tasks;
+    } else if (o.tasks && typeof o.tasks === "object" && !Array.isArray(o.tasks)) {
+      /* 部分模型把 tasks 建成 { "0": {...}, "1": {...} } */
+      tasks = Object.values(o.tasks as Record<string, unknown>).filter(
+        (x) => x != null && typeof x === "object",
+      );
     } else if (Array.isArray(o.taskList)) {
       tasks = o.taskList;
     } else if (Array.isArray(o.items)) {

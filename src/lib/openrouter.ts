@@ -166,6 +166,11 @@ export async function openRouterComplete(
     maxTokens?: number;
     /** 部分模型支持；若上游返回 400 会自动重试一次不带该字段 */
     responseFormat?: { type: "json_object" };
+    /**
+     * JSON 结构化路由应设为 true：不要把安全拒答文案当作模型输出去解析，
+     * 否则会误解析失败；报告/计划等 prose 路由保持默认（false）。
+     */
+    skipRefusal?: boolean;
   },
 ): Promise<{ content: string; rawModel: string }> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
@@ -225,17 +230,59 @@ export async function openRouterComplete(
     throw buildHttpError(res.status, t, modelUsed);
   }
 
-  const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-    model?: string;
-  };
-  const content = data.choices?.[0]?.message?.content?.trim() ?? "";
+  const data = (await res.json()) as Record<string, unknown>;
+  const content = extractAssistantMessageText(data, {
+    skipRefusal: options?.skipRefusal === true,
+  });
   if (!content) {
     const err = new Error("Empty OpenRouter response") as Error & { code: OpenRouterErrorCode };
     err.code = "PARSE_ERROR";
     throw err;
   }
-  return { content, rawModel: data.model ?? modelUsed };
+  const rawModel = typeof data.model === "string" ? data.model : modelUsed;
+  return { content, rawModel };
+}
+
+/** 从 Chat Completions 响应中取助手文本（兼容纯文本、多段 content、部分模型的 reasoning） */
+export function extractAssistantMessageText(
+  data: unknown,
+  opts?: { skipRefusal?: boolean },
+): string {
+  if (!data || typeof data !== "object") return "";
+  const root = data as Record<string, unknown>;
+  const choices = root.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return "";
+  const ch = choices[0] as Record<string, unknown>;
+
+  if (typeof ch.text === "string" && ch.text.trim()) return ch.text.trim();
+
+  const msg = ch.message as Record<string, unknown> | undefined;
+  if (!msg || typeof msg !== "object") return "";
+
+  if (!opts?.skipRefusal) {
+    const refusal = msg.refusal;
+    if (typeof refusal === "string" && refusal.trim()) return refusal.trim();
+  }
+
+  const c = msg.content;
+  if (typeof c === "string" && c.trim()) return c.trim();
+  if (Array.isArray(c)) {
+    const joined = c
+      .map((part) => {
+        if (!part || typeof part !== "object") return "";
+        const p = part as Record<string, unknown>;
+        if (p.type === "text" && typeof p.text === "string") return p.text;
+        if (typeof p.text === "string") return p.text;
+        return "";
+      })
+      .join("");
+    if (joined.trim()) return joined.trim();
+  }
+
+  const reasoning = msg.reasoning;
+  if (typeof reasoning === "string" && reasoning.trim()) return reasoning.trim();
+
+  return "";
 }
 
 /** 从模型输出中提取 JSON 字符串（处理 ```json 围栏；支持根为数组 `[...]`） */
