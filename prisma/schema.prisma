@@ -74,9 +74,11 @@ model OrgMember {
   userId       String
   role         String   @default("MEMBER")
   customRoleId String?
-  /// 在本组织内的部门（可选）
+  /// 在本组织内的部门（可选，关联组织预设部门）
   departmentId String?
-  joinedAt     DateTime @default(now())
+  /// 自行填写的部门名称（与 departmentId 二选一展示时优先此项）
+  departmentText String?
+  joinedAt       DateTime @default(now())
 
   org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)

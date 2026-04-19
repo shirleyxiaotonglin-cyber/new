@@ -12,21 +12,14 @@ export default async function ProfilePage({
   if (!session) redirect("/login");
   const { orgId } = await params;
 
-  const [member, departments] = await Promise.all([
-    prisma.orgMember.findUnique({
-      where: { orgId_userId: { orgId, userId: session.sub } },
-      include: {
-        org: true,
-        user: true,
-        department: { select: { id: true, name: true } },
-      },
-    }),
-    prisma.department.findMany({
-      where: { orgId },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-  ]);
+  const member = await prisma.orgMember.findUnique({
+    where: { orgId_userId: { orgId, userId: session.sub } },
+    include: {
+      org: true,
+      user: true,
+      department: { select: { id: true, name: true } },
+    },
+  });
 
   if (!member) redirect("/login");
 
@@ -36,14 +29,13 @@ export default async function ProfilePage({
         <p className="text-xs font-semibold uppercase tracking-wider text-red-600">个人中心</p>
         <h1 className="mt-2 text-2xl font-semibold text-gray-900">账号与资料</h1>
         <p className="mt-2 text-sm text-gray-600">
-          修改用户名、姓名、邮箱与头像；在当前组织下可选择部门（由组织预先创建部门列表）。
+          修改用户名、姓名、邮箱与头像；部门可自由填写（本组织内展示用）。
         </p>
       </header>
 
       <div className="mx-auto mt-10 max-w-xl rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
         <ProfileSettingsForm
           orgId={orgId}
-          departments={departments}
           initial={{
             name: member.user.name,
             email: member.user.email,
@@ -51,7 +43,7 @@ export default async function ProfilePage({
             avatarUrl: member.user.avatarUrl,
             orgRole: member.role,
             orgName: member.org.name,
-            departmentId: member.department?.id ?? null,
+            departmentText: member.departmentText,
             departmentName: member.department?.name ?? null,
           }}
         />

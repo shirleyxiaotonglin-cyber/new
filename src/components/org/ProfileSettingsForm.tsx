@@ -6,7 +6,6 @@ import { Camera, Loader2, Save } from "lucide-react";
 
 export type ProfileSettingsFormProps = {
   orgId: string;
-  departments: { id: string; name: string }[];
   initial: {
     name: string;
     email: string;
@@ -14,12 +13,13 @@ export type ProfileSettingsFormProps = {
     avatarUrl: string | null;
     orgRole: string;
     orgName: string;
-    departmentId: string | null;
+    /** 自填部门；空则回退显示曾选的组织部门名 */
+    departmentText: string | null;
     departmentName: string | null;
   };
 };
 
-export function ProfileSettingsForm({ orgId, departments, initial }: ProfileSettingsFormProps) {
+export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps) {
   const router = useRouter();
   const [name, setName] = useState(initial.name);
   const [username, setUsername] = useState(initial.username ?? "");
@@ -27,7 +27,9 @@ export function ProfileSettingsForm({ orgId, departments, initial }: ProfileSett
   const [emailDirty, setEmailDirty] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(initial.avatarUrl);
-  const [departmentId, setDepartmentId] = useState<string>(initial.departmentId ?? "");
+  const [departmentLabel, setDepartmentLabel] = useState(
+    () => (initial.departmentText?.trim() || initial.departmentName || "").trim(),
+  );
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -110,7 +112,7 @@ export function ProfileSettingsForm({ orgId, departments, initial }: ProfileSett
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          departmentId: departmentId === "" ? null : departmentId,
+          departmentText: departmentLabel.trim(),
         }),
       });
       const dj = (await deptRes.json()) as { error?: string };
@@ -275,24 +277,18 @@ export function ProfileSettingsForm({ orgId, departments, initial }: ProfileSett
           <label htmlFor="department" className="block text-xs font-medium text-gray-500">
             部门（本组织）
           </label>
-          <select
+          <input
             id="department"
-            value={departmentId}
-            onChange={(e) => setDepartmentId(e.target.value)}
-            className="mt-1 w-full max-w-md rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm"
-          >
-            <option value="">未指定</option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-          {departments.length === 0 ?
-            <p className="mt-1 text-xs text-amber-800">
-              当前组织尚未创建部门，可在数据库或后续「组织管理」中维护。
-            </p>
-          : null}
+            type="text"
+            placeholder="例如：市场部、项目组 A、研发中心…"
+            value={departmentLabel}
+            onChange={(e) => setDepartmentLabel(e.target.value)}
+            maxLength={120}
+            className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-gray-900 shadow-sm"
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            自由填写即可，保存后在本组织成员资料中展示；留空表示不填部门。
+          </p>
         </div>
 
         <button
