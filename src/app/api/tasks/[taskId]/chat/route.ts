@@ -5,6 +5,8 @@ import { requireProjectAccess } from "@/lib/access";
 import { broadcastTaskChat } from "@/lib/project-realtime";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 type Ctx = { params: Promise<{ taskId: string }> };
 
 async function requireTaskChatAccess(taskId: string, userId: string) {
@@ -37,15 +39,22 @@ export async function GET(req: Request, ctx: Ctx) {
     },
   });
 
-  return NextResponse.json({
-    messages: rows.map((m) => ({
-      id: m.id,
-      body: m.body,
-      createdAt: m.createdAt.toISOString(),
-      senderId: m.senderId,
-      sender: m.sender,
-    })),
-  });
+  return NextResponse.json(
+    {
+      messages: rows.map((m) => ({
+        id: m.id,
+        body: m.body,
+        createdAt: m.createdAt.toISOString(),
+        senderId: m.senderId,
+        sender: m.sender,
+      })),
+    },
+    {
+      headers: {
+        "Cache-Control": "private, no-store, must-revalidate",
+      },
+    },
+  );
 }
 
 const PostBody = z.object({

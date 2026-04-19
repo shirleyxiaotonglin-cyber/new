@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { FileUp, Loader2, MessageCircle, Paperclip, Send } from "lucide-react";
 import { useUserRealtime, type DirectMessageEvent } from "@/hooks/useUserRealtime";
 import { cn } from "@/lib/cn";
+import { sessionFetchInit } from "@/lib/fetch-session";
 
 type NotifRow = {
   id: string;
@@ -82,7 +83,7 @@ export function MessagesCenterClient({
   const loadThreads = useCallback(async () => {
     setThreadsLoading(true);
     try {
-      const res = await fetch(`/api/orgs/${orgId}/dm-threads`, { credentials: "include" });
+      const res = await fetch(`/api/orgs/${orgId}/dm-threads`, sessionFetchInit);
       const j = (await res.json()) as { threads?: DmThread[]; error?: string };
       if (!res.ok) throw new Error(typeof j.error === "string" ? j.error : "加载会话失败");
       setThreads(Array.isArray(j.threads) ? j.threads : []);
@@ -101,7 +102,7 @@ export function MessagesCenterClient({
     setMessagesLoading(true);
     setMsgError(null);
     try {
-      const res = await fetch(`/api/chat/dm/${threadId}/messages`, { credentials: "include" });
+      const res = await fetch(`/api/chat/dm/${threadId}/messages?take=500`, sessionFetchInit);
       const j = (await res.json()) as { messages?: Msg[]; error?: string };
       if (!res.ok) throw new Error(typeof j.error === "string" ? j.error : "加载消息失败");
       setMessages(Array.isArray(j.messages) ? j.messages : []);
@@ -134,8 +135,8 @@ export function MessagesCenterClient({
           `/api/projects/${projectIdFromUrl}/chat/dm/open`
         : `/api/orgs/${orgId}/chat/dm/open`,
         {
+          ...sessionFetchInit,
           method: "POST",
-          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ peerUserId: peerFromUrl }),
         },
@@ -185,14 +186,14 @@ export function MessagesCenterClient({
         fd.append("file", pendingFile);
         if (text) fd.append("body", text);
         res = await fetch(`/api/chat/dm/${selectedThreadId}/messages`, {
+          ...sessionFetchInit,
           method: "POST",
-          credentials: "include",
           body: fd,
         });
       } else {
         res = await fetch(`/api/chat/dm/${selectedThreadId}/messages`, {
+          ...sessionFetchInit,
           method: "POST",
-          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ body: text }),
         });

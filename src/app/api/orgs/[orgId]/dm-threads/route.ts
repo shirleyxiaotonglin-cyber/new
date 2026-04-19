@@ -4,6 +4,8 @@ import { requireOrgMember } from "@/lib/access";
 import { getSession } from "@/lib/auth";
 import { directMessagePeerLabel } from "@/lib/display-user";
 
+export const dynamic = "force-dynamic";
+
 type Ctx = { params: Promise<{ orgId: string }> };
 
 /** 当前用户的私信会话列表（含仅从项目协作发起的会话）；记录存于 DirectThread / DirectMessage */
@@ -65,11 +67,18 @@ export async function GET(_req: Request, ctx: Ctx) {
 
   mapped.sort((a, b) => b.sortTime - a.sortTime);
 
-  return NextResponse.json({
-    threads: mapped.map(({ threadId, peer, lastMessage }) => ({
-      threadId,
-      peer,
-      lastMessage,
-    })),
-  });
+  return NextResponse.json(
+    {
+      threads: mapped.map(({ threadId, peer, lastMessage }) => ({
+        threadId,
+        peer,
+        lastMessage,
+      })),
+    },
+    {
+      headers: {
+        "Cache-Control": "private, no-store, must-revalidate",
+      },
+    },
+  );
 }

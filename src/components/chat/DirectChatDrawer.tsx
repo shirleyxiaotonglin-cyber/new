@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { MessageCircle, X } from "lucide-react";
+import { sessionFetchInit } from "@/lib/fetch-session";
 
 export type ChatPeer = { id: string; name: string };
 
@@ -53,7 +54,7 @@ export function DirectChatDrawer({
   };
 
   const loadMessages = useCallback(async (tid: string) => {
-    const res = await fetch(`/api/chat/dm/${tid}/messages`, { credentials: "include" });
+    const res = await fetch(`/api/chat/dm/${tid}/messages?take=500`, sessionFetchInit);
     const j = (await res.json()) as { messages?: Msg[]; error?: string };
     if (!res.ok) throw new Error(typeof j.error === "string" ? j.error : "加载失败");
     setMessages(Array.isArray(j.messages) ? j.messages : []);
@@ -74,8 +75,8 @@ export function DirectChatDrawer({
       setError(null);
       try {
         const res = await fetch(`/api/projects/${projectId}/chat/dm/open`, {
+          ...sessionFetchInit,
           method: "POST",
-          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ peerUserId: peer.id }),
         });
@@ -113,8 +114,8 @@ export function DirectChatDrawer({
     setError(null);
     try {
       const res = await fetch(`/api/chat/dm/${threadId}/messages`, {
+        ...sessionFetchInit,
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: text }),
       });

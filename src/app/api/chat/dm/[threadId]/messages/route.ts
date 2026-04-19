@@ -14,6 +14,8 @@ import {
   safeStorageFileName,
 } from "@/lib/deliverable-helpers";
 
+export const dynamic = "force-dynamic";
+
 type Ctx = { params: Promise<{ threadId: string }> };
 
 const MAX_DM_FILE_BYTES = 30 * 1024 * 1024;
@@ -93,7 +95,14 @@ export async function GET(req: Request, ctx: Ctx) {
 
   const messages = await Promise.all(rows.map((m) => toApiMessage(m as MsgRow)));
 
-  return NextResponse.json({ messages });
+  return NextResponse.json(
+    { messages },
+    {
+      headers: {
+        "Cache-Control": "private, no-store, must-revalidate",
+      },
+    },
+  );
 }
 
 const PostBody = z.object({

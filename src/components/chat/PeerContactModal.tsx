@@ -31,7 +31,7 @@ export function PeerContactModal({
 
   function goMessages() {
     if (!user) return;
-    const q = new URLSearchParams({ peer: user.id, project: projectId });
+    const q = new URLSearchParams({ peer: user.id, projectId });
     router.push(`/org/${orgId}/messages?${q.toString()}`);
     onClose();
   }

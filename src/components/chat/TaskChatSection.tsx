@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { MessagesSquare } from "lucide-react";
+import { sessionFetchInit } from "@/lib/fetch-session";
 
 type Msg = {
   id: string;
@@ -42,7 +43,7 @@ export function TaskChatSection({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/tasks/${taskId}/chat`, { credentials: "include" });
+      const res = await fetch(`/api/tasks/${taskId}/chat?take=500`, sessionFetchInit);
       const j = (await res.json()) as { messages?: Msg[]; error?: string };
       if (!res.ok) throw new Error(typeof j.error === "string" ? j.error : "加载失败");
       setMessages(Array.isArray(j.messages) ? j.messages : []);
@@ -75,8 +76,8 @@ export function TaskChatSection({
     setError(null);
     try {
       const res = await fetch(`/api/tasks/${taskId}/chat`, {
+        ...sessionFetchInit,
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: text }),
       });
@@ -101,7 +102,7 @@ export function TaskChatSection({
         任务讨论
       </div>
       <p className="mb-2 text-[11px] leading-snug text-gray-500">
-        项目成员均可参与；与私聊不同，消息仅绑定本任务并在项目内实时同步。
+        项目成员均可参与；讨论记录在数据库长期保存，刷新或重新登录后仍可查看。与私聊不同，消息仅绑定本任务并在项目内实时同步。
       </p>
 
       <div className="mb-2 max-h-48 space-y-2 overflow-y-auto rounded-lg border border-gray-200 bg-white px-2 py-2">

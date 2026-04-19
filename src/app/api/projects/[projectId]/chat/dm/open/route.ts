@@ -6,6 +6,8 @@ import { sortedUserPair } from "@/lib/chat-utils";
 import { directMessagePeerLabel } from "@/lib/display-user";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 type Ctx = { params: Promise<{ projectId: string }> };
 
 const Body = z.object({
