@@ -162,6 +162,10 @@ export async function openRouterComplete(
     /** 默认读 OPENROUTER_MODEL，否则 openai/gpt-4o-mini */
     model?: string;
     temperature?: number;
+    /** 默认 4096；智能解析等长 JSON 可提高以减少截断 */
+    maxTokens?: number;
+    /** 部分模型支持；若上游返回 400 会自动重试一次不带该字段 */
+    responseFormat?: { type: "json_object" };
   },
 ): Promise<{ content: string; rawModel: string }> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
@@ -181,13 +185,16 @@ export async function openRouterComplete(
 
   const fallbackModel = process.env.OPENROUTER_FALLBACK_MODEL?.trim();
 
-  async function once(model: string): Promise<Response> {
+  async function sendCompletion(model: string, skipResponseFormat: boolean): Promise<Response> {
     const body: Record<string, unknown> = {
       model,
       messages,
       temperature: options?.temperature ?? 0.35,
-      max_tokens: 4096,
+      max_tokens: options?.maxTokens ?? 4096,
     };
+    if (options?.responseFormat && !skipResponseFormat) {
+      body.response_format = options.responseFormat;
+    }
 
     return fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -196,7 +203,7 @@ export async function openRouterComplete(
     });
   }
 
-  let res = await once(primaryModel);
+  let res = await sendCompletion(primaryModel, false);
   let modelUsed = primaryModel;
 
   if (
@@ -205,8 +212,12 @@ export async function openRouterComplete(
     fallbackModel &&
     fallbackModel !== primaryModel
   ) {
-    res = await once(fallbackModel);
+    res = await sendCompletion(fallbackModel, false);
     modelUsed = fallbackModel;
+  }
+
+  if (!res.ok && res.status === 400 && options?.responseFormat) {
+    res = await sendCompletion(modelUsed, true);
   }
 
   if (!res.ok) {
@@ -227,14 +238,19 @@ export async function openRouterComplete(
   return { content, rawModel: data.model ?? modelUsed };
 }
 
-/** 从模型输出中提取 JSON（处理 ```json 围栏） */
+/** 从模型输出中提取 JSON 字符串（处理 ```json 围栏；支持根为数组 `[...]`） */
 export function extractJsonObject(text: string): string {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence?.[1]) return fence[1].trim();
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return text.slice(start, end + 1);
-  return text.trim();
+  const inner = fence?.[1]?.trim() ?? text.trim();
+  if (inner.startsWith("[")) {
+    const a0 = inner.indexOf("[");
+    const a1 = inner.lastIndexOf("]");
+    if (a0 >= 0 && a1 > a0) return inner.slice(a0, a1 + 1);
+  }
+  const start = inner.indexOf("{");
+  const end = inner.lastIndexOf("}");
+  if (start >= 0 && end > start) return inner.slice(start, end + 1);
+  return inner;
 }
 
 export function isOpenRouterHttpError(e: unknown): e is OpenRouterHttpError {

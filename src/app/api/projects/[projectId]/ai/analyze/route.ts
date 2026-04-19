@@ -14,6 +14,7 @@ import {
 } from "@/lib/openrouter";
 import { broadcastProjectSync } from "@/lib/project-realtime";
 import { AI_TASK_PARSE_USER_MESSAGE } from "@/lib/ai-user-messages";
+import { coerceAnalyzeOutput, parseLenientJson } from "@/lib/analyze-task-json";
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
@@ -243,7 +244,11 @@ export async function POST(req: Request, ctx: Ctx) {
         { role: "system", content: systemPrompt },
         { role: "user", content: parsedBody.data.text.slice(0, 32000) },
       ],
-      { temperature: 0.25 },
+      {
+        temperature: 0.25,
+        maxTokens: 8192,
+        responseFormat: { type: "json_object" },
+      },
     );
     rawJson = extractJsonObject(content);
   } catch (e: unknown) {
@@ -290,8 +295,9 @@ export async function POST(req: Request, ctx: Ctx) {
 
   let structured: z.infer<typeof OutputSchema>;
   try {
-    const obj = JSON.parse(rawJson) as unknown;
-    const out = OutputSchema.safeParse(obj);
+    const obj = parseLenientJson(rawJson);
+    const coerced = coerceAnalyzeOutput(obj);
+    const out = OutputSchema.safeParse(coerced);
     if (!out.success) {
       return NextResponse.json(
         {
