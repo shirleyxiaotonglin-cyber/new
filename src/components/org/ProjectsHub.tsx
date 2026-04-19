@@ -7,6 +7,7 @@ import { Check, Copy, FolderPlus, Loader2, LogIn, Rocket, Trash2 } from "lucide-
 import { ProjectTemplate } from "@/lib/constants";
 import { copyTextToClipboard } from "@/lib/copy-text";
 import { cn } from "@/lib/cn";
+import { normalizeProjectIdInput } from "@/lib/project-id-input";
 type ProjectRow = {
   id: string;
   name: string;
@@ -83,7 +84,8 @@ export function ProjectsHub({
   async function joinProject(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    if (!joinId.trim()) {
+    const pid = normalizeProjectIdInput(joinId);
+    if (!pid) {
       setErr("请填写项目 ID");
       return;
     }
@@ -92,7 +94,7 @@ export function ProjectsHub({
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: joinId.trim() }),
+      body: JSON.stringify({ projectId: pid }),
     });
     setJoining(false);
     const j = await res.json().catch(() => ({}));

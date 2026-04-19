@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getPrimaryOrgMembership } from "@/lib/workspace";
 import { ProjectMemberRole } from "@/lib/constants";
 import { z } from "zod";
+import { normalizeProjectIdInput } from "@/lib/project-id-input";
 
 const Body = z.object({
   projectId: z.string().min(1),
@@ -30,12 +31,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "需要 projectId" }, { status: 400 });
   }
 
+  const normalizedId = normalizeProjectIdInput(parsed.data.projectId);
+  if (!normalizedId || normalizedId.length < 8) {
+    return NextResponse.json(
+      { error: "项目 ID 无效，请粘贴完整 ID 或浏览器地址栏中的项目页链接。" },
+      { status: 400 },
+    );
+  }
+
   const project = await prisma.project.findUnique({
-    where: { id: parsed.data.projectId },
+    where: { id: normalizedId },
     select: { id: true, orgId: true, name: true },
   });
   if (!project) {
-    return NextResponse.json({ error: "项目不存在" }, { status: 404 });
+    return NextResponse.json(
+      {
+        error:
+          "项目不存在。请核对 ID 是否与负责人一致，或改为粘贴项目页完整链接；若来源不同环境（本地 / 线上），数据库中的项目也可能不一致。",
+      },
+      { status: 404 },
+    );
   }
 
   await prisma.projectMember.upsert({
