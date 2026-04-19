@@ -231,23 +231,37 @@ export function MyTasksBoard({ orgId, tasks }: { orgId: string; tasks: MyTaskLis
         </p>
       : (
         <ul className="mt-6 space-y-2">
-          {filtered.map((t) => (
-            <li key={t.id}>
-              <Link
-                href={`/org/${orgId}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 px-4 py-3 transition-colors hover:border-red-200 hover:bg-red-50/30"
+          {filtered.map((t) => {
+            const taskHref = `/org/${orgId}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`;
+            return (
+              <li
+                key={t.id}
+                className="flex overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-colors hover:border-red-200"
               >
-                <span className="font-medium text-gray-900">{t.title}</span>
-                <span className="text-sm text-gray-500">{t.projectName}</span>
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
-                  {STATUS_LABEL[t.status] ?? t.status}
-                </span>
-                <span className="text-xs text-gray-400">
-                  {t.dueDate ? format(parseISO(t.dueDate), "yyyy-MM-dd") : "无截止日"}
-                </span>
-              </Link>
-            </li>
-          ))}
+                <Link
+                  href={taskHref}
+                  className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors hover:bg-red-50/40"
+                >
+                  <span className="min-w-0 flex-[1_1_100%] font-medium text-gray-900 sm:flex-[2_1_40%]">
+                    {t.title}
+                  </span>
+                  <span className="text-sm text-gray-500">{t.projectName}</span>
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                    {STATUS_LABEL[t.status] ?? t.status}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {t.dueDate ? format(parseISO(t.dueDate), "yyyy-MM-dd") : "无截止日"}
+                  </span>
+                </Link>
+                <Link
+                  href={taskHref}
+                  className="inline-flex shrink-0 items-center justify-center border-l border-gray-100 bg-red-50/90 px-4 py-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
+                >
+                  去处理
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
