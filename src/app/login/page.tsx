@@ -9,7 +9,7 @@ import { PRODUCT_TAGLINE } from "@/lib/product-brand";
 
 type Mode = "login" | "register";
 
-/** 服务端 /api/auth/demo：生产环境需配置 NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true 方可真正登录成功 */
+/** 服务端 /api/auth/demo：默认启用；生产关闭一键演示时设置 DISABLE_DEMO_LOGIN=true */
 async function redirectAfterAuth(router: ReturnType<typeof useRouter>) {
   /** no-store：避免浏览器沿用上一位登录用户的 /api/auth/me 缓存响应 */
   const meRes = await fetch("/api/auth/me", {
