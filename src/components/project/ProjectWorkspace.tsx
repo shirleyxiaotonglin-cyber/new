@@ -53,6 +53,7 @@ import {
 } from "@/components/chat/DirectChatDrawer";
 import { TaskChatSection } from "@/components/chat/TaskChatSection";
 import { useUserRealtime, type DirectMessageEvent } from "@/hooks/useUserRealtime";
+import { userDisplayName } from "@/lib/display-user";
 
 type TaskRow = {
   id: string;
@@ -63,13 +64,15 @@ type TaskRow = {
   dueDate: string | null;
   startDate: string | null;
   progress?: number | null;
-  assignee: { id: string; name: string } | null;
+  assignee: { id: string; name: string; username?: string | null } | null;
   tags: { tag: { id: string; name: string; color: string } }[];
   dependenciesPredecessors: {
     predecessor: { id: string; title: string; status: string };
   }[];
   subtasks: { id: string; title: string; status: string }[];
-  assistants?: { user: { id: string; name: string; email?: string | null } }[];
+  assistants?: {
+    user: { id: string; name: string; username?: string | null; email?: string | null };
+  }[];
 };
 
 function apiErrorWithHint(j: Record<string, unknown>, fallback: string): string {
@@ -92,7 +95,7 @@ function normalizeTaskRow(t: TaskRow): TaskRow {
 
 type ProjectMemberOption = {
   userId: string;
-  user: { id: string; name: string; email: string };
+  user: { id: string; name: string; email: string; username?: string | null };
 };
 
 type View =
@@ -256,6 +259,8 @@ export function ProjectWorkspace({
   const [analytics, setAnalytics] = useState<AnalyticsBundle | null>(null);
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [selected, setSelected] = useState<TaskRow | null>(null);
+  const [assigneeEmailDraft, setAssigneeEmailDraft] = useState("");
+  const [assistEmailDraft, setAssistEmailDraft] = useState("");
   const [dragging, setDragging] = useState<TaskRow | null>(null);
   const [aiText, setAiText] = useState("");
   /** OpenRouter 解析后的预览（尚未写入数据库） */
@@ -482,6 +487,11 @@ export function ProjectWorkspace({
     return m;
   }, [tasks]);
 
+  useEffect(() => {
+    setAssigneeEmailDraft("");
+    setAssistEmailDraft("");
+  }, [selected?.id]);
+
   async function deleteTask(id: string): Promise<boolean> {
     try {
       const res = await fetch(`/api/tasks/${id}`, {
@@ -551,6 +561,30 @@ export function ProjectWorkspace({
       setSaveError("网络异常，请稍后重试");
       return false;
     }
+  }
+
+  async function applyAssigneeByEmail() {
+    if (!selected) return;
+    const v = assigneeEmailDraft.trim();
+    if (!v) return;
+    const ok = await patchTask(selected.id, { assigneeEmail: v });
+    if (ok) setAssigneeEmailDraft("");
+  }
+
+  async function addAssistantsByEmail() {
+    if (!selected) return;
+    const em = assistEmailDraft.trim();
+    if (!em) return;
+    const mails = new Set<string>();
+    for (const a of selected.assistants ?? []) {
+      const e = a.user.email?.trim().toLowerCase();
+      if (e) mails.add(e);
+    }
+    mails.add(em.toLowerCase());
+    const ok = await patchTask(selected.id, {
+      assistantEmails: Array.from(mails),
+    });
+    if (ok) setAssistEmailDraft("");
   }
 
   const onDragEnd = async (e: DragEndEvent) => {
@@ -804,13 +838,19 @@ export function ProjectWorkspace({
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          <span>{t.assignee?.name ?? "—"}</span>
+                          <span>
+                            {t.assignee ? userDisplayName(t.assignee) : "—"}
+                          </span>
                           {t.assignee && meId && t.assignee.id !== meId ? (
                             <button
                               type="button"
                               className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
                               onClick={() => {
-                                setDmPeer({ id: t.assignee!.id, name: t.assignee!.name });
+                                const a = t.assignee!;
+                                setDmPeer({
+                                  id: a.id,
+                                  name: userDisplayName(a),
+                                });
                                 setDmOpen(true);
                               }}
                             >
@@ -1102,7 +1142,7 @@ export function ProjectWorkspace({
                         <td className="px-3 py-2 font-medium text-gray-900">{r.title}</td>
                         <td className="px-3 py-2 text-gray-600">
                           {r.assignee ?
-                            r.assignee.name
+                            userDisplayName(r.assignee)
                           : r.assigneeUnresolved && r.assigneeName ?
                             <span title="请在项目中添加该成员或改名后重新解析">{r.assigneeName}（未匹配）</span>
                           : r.assigneeName ?
@@ -1236,7 +1276,7 @@ export function ProjectWorkspace({
                     onClick={() => {
                       setDmPeer({
                         id: selected.assignee!.id,
-                        name: selected.assignee!.name,
+                        name: userDisplayName(selected.assignee!),
                       });
                       setDmOpen(true);
                     }}
@@ -1257,16 +1297,43 @@ export function ProjectWorkspace({
                 <option value="">未指定</option>
                 {projectMembers.map((m) => (
                   <option key={m.user.id} value={m.user.id}>
-                    {m.user.name}
+                    {userDisplayName(m.user)}
                     {m.user.email ? ` (${m.user.email})` : ""}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-[11px] leading-snug text-gray-400">
+                下拉列表为已在项目中的成员；也可输入<strong>对方注册邮箱</strong>
+                ，保存后将其加入组织与本项目并设为负责人（须账号已存在）。
+              </p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  type="email"
+                  autoComplete="email"
+                  placeholder="负责人邮箱（例 user@company.com）"
+                  className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900"
+                  value={assigneeEmailDraft}
+                  onChange={(e) => setAssigneeEmailDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void applyAssigneeByEmail();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="shrink-0 rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                  onClick={() => void applyAssigneeByEmail()}
+                >
+                  应用
+                </button>
+              </div>
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500">协助人</label>
               <p className="mb-2 text-[11px] text-gray-400">
-                请选择项目成员；需先将成员加入本项目。
+                勾选左侧项目成员，或在下框用邮箱添加：对方须已注册，添加后将自动加入本项目并出现在此任务中。
               </p>
               <div className="max-h-36 space-y-1.5 overflow-y-auto rounded border border-gray-200 bg-gray-50/80 px-2 py-2">
                 {projectMembers.length === 0 ? (
@@ -1297,7 +1364,7 @@ export function ProjectWorkspace({
                             }}
                           />
                           <span className="truncate">
-                            {m.user.name}
+                            {userDisplayName(m.user)}
                             <span className="text-gray-500"> · {m.user.email}</span>
                           </span>
                         </label>
@@ -1306,7 +1373,10 @@ export function ProjectWorkspace({
                             type="button"
                             className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
                             onClick={() => {
-                              setDmPeer({ id: m.user.id, name: m.user.name });
+                              setDmPeer({
+                                id: m.user.id,
+                                name: userDisplayName(m.user),
+                              });
                               setDmOpen(true);
                             }}
                           >
@@ -1317,6 +1387,29 @@ export function ProjectWorkspace({
                     );
                   })
                 )}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="email"
+                  autoComplete="email"
+                  placeholder="协作人邮箱（须已注册）"
+                  className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900"
+                  value={assistEmailDraft}
+                  onChange={(e) => setAssistEmailDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void addAssistantsByEmail();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="shrink-0 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                  onClick={() => void addAssistantsByEmail()}
+                >
+                  添加
+                </button>
               </div>
             </div>
             <div>

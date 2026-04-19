@@ -7,6 +7,7 @@ import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import { taskDetailInclude } from "@/lib/task-includes";
 import { broadcastProjectSync } from "@/lib/project-realtime";
+import { findRegisteredUserByEmail, ensureOrgAndProjectMember } from "@/lib/membership-invite";
 
 type Ctx = { params: Promise<{ taskId: string }> };
 
@@ -24,8 +25,18 @@ const PatchBody = z.object({
   startDate: z.string().datetime().nullable().optional(),
   sortOrder: z.number().int().optional(),
   progress: z.number().min(0).max(100).optional(),
-  /** 协助人用户 ID 列表（须为项目成员） */
+  /** 协助人用户 ID 列表（须为项目成员，可与 assistantEmails 同时出现并合并） */
   assistantIds: z.array(z.string()).optional(),
+  /**
+   * 通过已注册邮箱指定负责人；会将其加入本组织与项目，并设置 assigneeId。
+   * 传空字符串 "" 表示清空负责人。
+   */
+  assigneeEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  /**
+   * 通过邮箱批量指定协作人（须已注册）；解析后与 assistantIds 合并。
+   * 传入空数组 [] 表示清空协作人（若未同时传 assistantIds）。
+   */
+  assistantEmails: z.array(z.string().email()).max(16).optional(),
 });
 
 export async function PATCH(req: Request, ctx: Ctx) {
@@ -65,23 +76,111 @@ export async function PATCH(req: Request, ctx: Ctx) {
         ? new Date(parsed.data.startDate)
         : null;
 
-  if (parsed.data.assistantIds !== undefined) {
-    const members = await prisma.projectMember.findMany({
-      where: { projectId: existing.projectId },
-      select: { userId: true },
-    });
-    const allowed = new Set(members.map((m) => m.userId));
-    for (const uid of parsed.data.assistantIds) {
-      if (!allowed.has(uid)) {
+  const projectRow = await prisma.project.findUnique({
+    where: { id: existing.projectId },
+    select: { orgId: true },
+  });
+  if (!projectRow) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  }
+  const orgId = projectRow.orgId;
+
+  const membersBefore = await prisma.projectMember.findMany({
+    where: { projectId: existing.projectId },
+    select: { userId: true },
+  });
+  const allowedBefore = new Set(membersBefore.map((m) => m.userId));
+
+  let resolvedAssigneeIdFromEmail: string | null | undefined = undefined;
+  if (parsed.data.assigneeEmail !== undefined) {
+    if (parsed.data.assigneeEmail === "") {
+      resolvedAssigneeIdFromEmail = null;
+    } else {
+      const u = await findRegisteredUserByEmail(parsed.data.assigneeEmail);
+      if (!u) {
         return NextResponse.json(
-          { error: "协助人须为当前项目成员" },
+          { error: "未找到该邮箱对应的注册账号，请对方先注册后再指定。" },
+          { status: 404 },
+        );
+      }
+      resolvedAssigneeIdFromEmail = u.id;
+    }
+  }
+
+  let emailAssistantIds: string[] = [];
+  if (parsed.data.assistantEmails !== undefined) {
+    for (const em of parsed.data.assistantEmails) {
+      const u = await findRegisteredUserByEmail(em);
+      if (!u) {
+        return NextResponse.json(
+          { error: `未找到邮箱 ${em} 对应的注册账号，请对方先注册后再指定。` },
+          { status: 404 },
+        );
+      }
+      emailAssistantIds.push(u.id);
+    }
+    emailAssistantIds = Array.from(new Set(emailAssistantIds));
+  }
+
+  let patchAssigneeId: string | null | undefined = undefined;
+  if (parsed.data.assigneeEmail !== undefined) {
+    patchAssigneeId =
+      resolvedAssigneeIdFromEmail !== undefined ? resolvedAssigneeIdFromEmail : null;
+  } else if (parsed.data.assigneeId !== undefined) {
+    if (parsed.data.assigneeId !== null && !allowedBefore.has(parsed.data.assigneeId)) {
+      return NextResponse.json(
+        {
+          error:
+            "负责人须从当前项目成员中选择，或通过「邮箱」添加已注册用户。",
+        },
+        { status: 400 },
+      );
+    }
+    patchAssigneeId = parsed.data.assigneeId;
+  }
+
+  const emailAssistSet = new Set(emailAssistantIds);
+  if (parsed.data.assistantIds !== undefined) {
+    for (const uid of parsed.data.assistantIds) {
+      if (!allowedBefore.has(uid) && !emailAssistSet.has(uid)) {
+        return NextResponse.json(
+          {
+            error:
+              "协作人须为当前项目成员，或通过邮箱添加已注册用户。",
+          },
           { status: 400 },
         );
       }
     }
   }
 
+  let finalAssistantIds: string[] | undefined = undefined;
+  if (parsed.data.assistantEmails !== undefined || parsed.data.assistantIds !== undefined) {
+    finalAssistantIds = Array.from(
+      new Set([
+        ...(parsed.data.assistantEmails !== undefined ? emailAssistantIds : []),
+        ...(parsed.data.assistantIds ?? []),
+      ]),
+    );
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
+    const toEnsure = new Set<string>();
+    if (patchAssigneeId) toEnsure.add(patchAssigneeId);
+    if (finalAssistantIds) {
+      for (const uid of finalAssistantIds) {
+        toEnsure.add(uid);
+      }
+    }
+
+    for (const uid of Array.from(toEnsure)) {
+      await ensureOrgAndProjectMember(tx, {
+        orgId,
+        projectId: existing.projectId,
+        userId: uid,
+      });
+    }
+
     await tx.task.update({
       where: { id: taskId },
       data: {
@@ -89,7 +188,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
         description: parsed.data.description,
         status: parsed.data.status,
         priority: parsed.data.priority,
-        assigneeId: parsed.data.assigneeId,
+        ...(patchAssigneeId !== undefined ? { assigneeId: patchAssigneeId } : {}),
         dueDate,
         startDate,
         sortOrder: parsed.data.sortOrder,
@@ -97,11 +196,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
       },
     });
 
-    if (parsed.data.assistantIds !== undefined) {
+    if (finalAssistantIds !== undefined) {
       await tx.taskAssistant.deleteMany({ where: { taskId } });
-      if (parsed.data.assistantIds.length > 0) {
+      if (finalAssistantIds.length > 0) {
         await tx.taskAssistant.createMany({
-          data: parsed.data.assistantIds.map((userId) => ({ taskId, userId })),
+          data: finalAssistantIds.map((userId) => ({ taskId, userId })),
         });
       }
     }
