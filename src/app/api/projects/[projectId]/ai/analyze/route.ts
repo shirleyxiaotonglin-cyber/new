@@ -318,6 +318,10 @@ export async function POST(req: Request, ctx: Ctx) {
 
   const inputText = parsedBody.data.text.slice(0, 32000);
   console.log("[ai/analyze] 输入文本长度:", inputText.length);
+  console.log(
+    "[ai/analyze] OPENROUTER_MODEL（请求前）:",
+    process.env.OPENROUTER_MODEL?.trim() || "(未设置，服务端默认 openai/gpt-4o-mini)",
+  );
 
   const memberRows = await prisma.projectMember.findMany({
     where: { projectId },
@@ -358,12 +362,16 @@ export async function POST(req: Request, ctx: Ctx) {
     const timeoutId = setTimeout(() => controller.abort(), OPENROUTER_ANALYZE_TIMEOUT_MS);
 
     try {
-      const { content } = await openRouterComplete(chatMessages, {
+      const { content, rawModel } = await openRouterComplete(chatMessages, {
         temperature: 0.25,
         maxTokens: 4096,
         skipRefusal: true,
         signal: controller.signal,
       });
+      console.log(
+        "[ai/analyze] 本次 API 实际使用的模型（响应里 model 字段，应与 OPENROUTER 控制台 slug 一致）:",
+        rawModel,
+      );
       console.log(
         "[ai/analyze] OpenRouter 返回内容长度:",
         content.length,
