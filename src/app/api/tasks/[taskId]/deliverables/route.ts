@@ -188,7 +188,7 @@ export async function POST(req: Request, ctx: Ctx) {
         size: fileAsset.size,
         fileType: fileAsset.mimeType,
       });
-    } catch (e) {
+    } catch {
       await supabase.storage.from(bucket).remove([path]).catch(() => {});
       errors.push(`${file.name}：数据库写入失败`);
     }
