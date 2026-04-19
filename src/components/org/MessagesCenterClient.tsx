@@ -272,7 +272,7 @@ export function MessagesCenterClient({
         <div className="mt-4 flex min-h-[420px] flex-col gap-4 rounded-2xl border border-gray-200 bg-white shadow-sm lg:flex-row lg:gap-0">
           <aside className="flex w-full flex-col border-b border-gray-200 lg:w-72 lg:border-b-0 lg:border-r">
             <p className="border-b border-gray-100 px-3 py-2 text-xs font-medium text-gray-500">
-              本会话列表（对方须为本组织成员）
+              联系人 · 最近会话
             </p>
             <div className="max-h-[280px] overflow-y-auto lg:max-h-[480px]">
               {threadsLoading ?

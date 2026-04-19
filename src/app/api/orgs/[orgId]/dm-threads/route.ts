@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireOrgMember } from "@/lib/access";
 import { getSession } from "@/lib/auth";
+import { directMessagePeerLabel } from "@/lib/display-user";
 
 type Ctx = { params: Promise<{ orgId: string }> };
 
-/** 当前用户在本组织可见的私信会话列表（对方须为本组织成员）；记录存于 DirectThread / DirectMessage */
+/** 当前用户的私信会话列表（含仅从项目协作发起的会话）；记录存于 DirectThread / DirectMessage */
 export async function GET(_req: Request, ctx: Ctx) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -14,22 +15,17 @@ export async function GET(_req: Request, ctx: Ctx) {
   const self = await requireOrgMember(orgId, session.sub);
   if (!self) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const orgUserIds = new Set(
-    (
-      await prisma.orgMember.findMany({
-        where: { orgId },
-        select: { userId: true },
-      })
-    ).map((x) => x.userId),
-  );
-
   const raw = await prisma.directThread.findMany({
     where: {
       OR: [{ userLowId: session.sub }, { userHighId: session.sub }],
     },
     include: {
-      userLow: { select: { id: true, name: true, email: true, avatarUrl: true } },
-      userHigh: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      userLow: {
+        select: { id: true, username: true, name: true, email: true, avatarUrl: true },
+      },
+      userHigh: {
+        select: { id: true, username: true, name: true, email: true, avatarUrl: true },
+      },
       messages: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
@@ -49,9 +45,14 @@ export async function GET(_req: Request, ctx: Ctx) {
   const mapped: Row[] = [];
 
   for (const th of raw) {
-    const peer = th.userLowId === session.sub ? th.userHigh : th.userLow;
-    if (!orgUserIds.has(peer.id)) continue;
+    const peerRaw = th.userLowId === session.sub ? th.userHigh : th.userLow;
     const last = th.messages[0];
+    const peer = {
+      id: peerRaw.id,
+      email: peerRaw.email,
+      avatarUrl: peerRaw.avatarUrl,
+      name: directMessagePeerLabel(peerRaw),
+    };
     mapped.push({
       threadId: th.id,
       peer,

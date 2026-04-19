@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/access";
 import { getSession } from "@/lib/auth";
 import { sortedUserPair } from "@/lib/chat-utils";
+import { directMessagePeerLabel } from "@/lib/display-user";
 import { z } from "zod";
 
 type Ctx = { params: Promise<{ projectId: string }> };
@@ -56,12 +57,14 @@ export async function POST(req: Request, ctx: Ctx) {
 
   const peerUser = await prisma.user.findUnique({
     where: { id: peerUserId },
-    select: { id: true, name: true, email: true, avatarUrl: true },
+    select: { id: true, username: true, name: true, email: true, avatarUrl: true },
   });
 
   return NextResponse.json({
     threadId: thread.id,
     peerUserId,
-    peer: peerUser,
+    peer: peerUser
+      ? { ...peerUser, name: directMessagePeerLabel(peerUser) }
+      : null,
   });
 }
