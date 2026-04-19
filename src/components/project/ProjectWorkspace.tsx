@@ -1334,39 +1334,7 @@ export function ProjectWorkspace({
               />
             </div>
             <div>
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-medium text-gray-500">负责人</label>
-                {selected.assignee && meId && selected.assignee.id !== meId ? (
-                  <div className="flex flex-wrap items-center justify-end gap-1.5">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                      onClick={() => {
-                        const q = new URLSearchParams({
-                          peer: selected.assignee!.id,
-                          project: projectId,
-                        });
-                        router.push(`/org/${orgId}/messages?${q.toString()}`);
-                      }}
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" aria-hidden />
-                      私聊
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
-                      onClick={() => {
-                        setContactUser(
-                          buildPeerProfileFromAssignee(selected.assignee!, projectMembers),
-                        );
-                      }}
-                    >
-                      <User className="h-3.5 w-3.5" aria-hidden />
-                      查看资料
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+              <label className="text-xs font-medium text-gray-500">负责人</label>
               <select
                 className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 value={selected.assignee?.id ?? ""}
@@ -1383,11 +1351,56 @@ export function ProjectWorkspace({
                   </option>
                 ))}
               </select>
+              {selected.assignee ?
+                <div className="mt-2 rounded-lg border border-red-100 bg-red-50/70 px-3 py-2.5">
+                  <p className="text-[11px] font-medium text-gray-700">发消息（消息中心 · 私信）</p>
+                  {meId && selected.assignee.id !== meId ?
+                    <>
+                      <p className="mt-1 text-[11px] leading-snug text-gray-600">
+                        与负责人 <span className="font-medium">{selected.assignee.name}</span>{" "}
+                        一对一沟通进度、验收与文件。
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white shadow-sm hover:bg-red-700 sm:flex-none"
+                          onClick={() => {
+                            const q = new URLSearchParams({
+                              peer: selected.assignee!.id,
+                              project: projectId,
+                            });
+                            router.push(`/org/${orgId}/messages?${q.toString()}`);
+                          }}
+                        >
+                          <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
+                          向负责人发消息
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-800 hover:bg-white/90"
+                          onClick={() => {
+                            setContactUser(
+                              buildPeerProfileFromAssignee(selected.assignee!, projectMembers),
+                            );
+                          }}
+                        >
+                          <User className="h-3.5 w-3.5" aria-hidden />
+                          查看资料
+                        </button>
+                      </div>
+                    </>
+                  : meId && selected.assignee.id === meId ?
+                    <p className="mt-1 text-[11px] leading-snug text-gray-600">
+                      您已是负责人，无法与自己私聊。如需联系协助人，请在下方勾选成员后使用「向协助人发消息」。
+                    </p>
+                  : <p className="mt-1 text-[11px] text-gray-500">登录后即可向负责人发送私信。</p>}
+                </div>
+              : <p className="mt-2 text-[11px] text-gray-400">选定负责人后，可在此处跳转消息中心与其私信。</p>}
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500">协助人</label>
               <p className="mb-2 text-[11px] text-gray-400">
-                请选择项目成员；需先将成员加入本项目。
+                勾选项目成员作为协助人；勾选后可向其发消息（需先将成员加入本项目）。
               </p>
               <div className="max-h-36 space-y-1.5 overflow-y-auto rounded border border-gray-200 bg-gray-50/80 px-2 py-2">
                 {projectMembers.length === 0 ? (
@@ -1422,11 +1435,11 @@ export function ProjectWorkspace({
                             <span className="text-gray-500"> · {m.user.email}</span>
                           </span>
                         </label>
-                        {meId && m.user.id !== meId ? (
-                          <div className="flex shrink-0 items-center gap-1">
+                        {checked && meId && m.user.id !== meId ?
+                          <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
                             <button
                               type="button"
-                              className="rounded border border-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-50"
+                              className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-1 text-[10px] font-medium text-white shadow-sm hover:bg-red-700"
                               onClick={() => {
                                 const q = new URLSearchParams({
                                   peer: m.user.id,
@@ -1435,11 +1448,12 @@ export function ProjectWorkspace({
                                 router.push(`/org/${orgId}/messages?${q.toString()}`);
                               }}
                             >
-                              私聊
+                              <MessageCircle className="h-3 w-3 shrink-0" aria-hidden />
+                              发消息
                             </button>
                             <button
                               type="button"
-                              className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                              className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-50"
                               onClick={() => {
                                 setContactUser({
                                   id: m.user.id,
@@ -1452,7 +1466,9 @@ export function ProjectWorkspace({
                               资料
                             </button>
                           </div>
-                        ) : null}
+                        : checked && meId && m.user.id === meId ?
+                          <span className="shrink-0 text-[10px] text-gray-400">您</span>
+                        : null}
                       </div>
                     );
                   })
