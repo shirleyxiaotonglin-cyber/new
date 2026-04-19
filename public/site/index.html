@@ -28,7 +28,7 @@
       <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <div class="flex min-w-0 flex-col">
           <a href="index.html" class="truncate text-base font-bold leading-tight tracking-tight text-red-600 sm:text-lg">ProjectHub 多人协作项目管理平台</a>
-          <span class="mt-0.5 hidden max-w-[min(100%,18rem)] text-[11px] leading-snug text-gray-500 sm:block">项目与任务 · 甘特 · 协作 · 评论与消息 · 资源中心 · AI</span>
+          <span class="mt-0.5 hidden max-w-[min(100%,14rem)] text-[11px] leading-snug text-gray-500 sm:block">项目与任务 · 看板甘特 · 交付物与资源库 · 团队私信与协作</span>
         </div>
         <nav class="flex items-center gap-3">
           <a
@@ -75,18 +75,14 @@
         <div
           class="mx-auto mt-16 max-w-4xl rounded-2xl border border-gray-200 bg-gray-50/80 p-6 shadow-inner sm:p-10"
         >
-          <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-center text-sm text-gray-600">
-            <span class="flex items-center gap-2">📋 项目与任务</span>
+          <div class="flex flex-wrap items-center justify-center gap-8 text-center text-sm text-gray-600">
+            <span class="flex items-center gap-2">📊 时间轴 / 甘特</span>
             <span class="hidden h-8 w-px bg-gray-200 sm:block"></span>
-            <span class="flex items-center gap-2">📊 甘特图</span>
+            <span class="flex items-center gap-2">📋 看板拖拽</span>
             <span class="hidden h-8 w-px bg-gray-200 sm:block"></span>
-            <span class="flex items-center gap-2">👥 多人协作</span>
+            <span class="flex items-center gap-2">✏️ 手动 / AI 建任务</span>
             <span class="hidden h-8 w-px bg-gray-200 sm:block"></span>
-            <span class="flex items-center gap-2">💬 评论与消息</span>
-            <span class="hidden h-8 w-px bg-gray-200 sm:block"></span>
-            <span class="flex items-center gap-2">📁 文件与资源</span>
-            <span class="hidden h-8 w-px bg-gray-200 sm:block"></span>
-            <span class="flex items-center gap-2">✨ AI 助手</span>
+            <span class="flex items-center gap-2">📈 数据看板</span>
           </div>
         </div>
       </div>
@@ -95,7 +91,8 @@
     <section class="mx-auto max-w-6xl px-4 py-20 sm:px-6">
       <h2 class="text-center text-2xl font-bold text-gray-900 sm:text-3xl">核心能力</h2>
       <p class="mx-auto mt-3 max-w-xl text-center text-gray-600">
-        以下与 Next.js 应用内已实现能力对应；静态页仅作展示，以登录后界面为准。
+        响应式布局，手机侧栏抽屉，桌面左侧导航；项目管理、我的任务、消息中心等模块。项目工作台内可新建与删除任务，并与
+        AI 导入流程并存。
       </p>
       <ul class="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <li
@@ -104,12 +101,10 @@
           <div
             class="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100 text-xl text-red-600"
           >
-            📋
+            ◈
           </div>
-          <h3 class="mt-4 font-semibold text-gray-900">项目与任务管理</h3>
-          <p class="mt-2 text-sm leading-relaxed text-gray-600">
-            按组织、项目管理工作；看板与列表视图，任务侧栏维护状态、优先级、负责人与协助人、子任务、依赖与标签，并支持「我的任务」汇总。
-          </p>
+          <h3 class="mt-4 font-semibold text-gray-900">多空间 / 组织</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-600">Workspace 级隔离，模板化立项。</p>
         </li>
         <li
           class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:border-red-100 hover:shadow-md"
@@ -117,12 +112,10 @@
           <div
             class="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100 text-xl text-red-600"
           >
-            📊
+            ▦
           </div>
-          <h3 class="mt-4 font-semibold text-gray-900">甘特图系统</h3>
-          <p class="mt-2 text-sm leading-relaxed text-gray-600">
-            时间轴展示起止、进度与依赖，与看板、列表数据同源，便于排期与对照。
-          </p>
+          <h3 class="mt-4 font-semibold text-gray-900">看板 · 列表 · 甘特</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-600">多视图同步，进入项目默认甘特图。</p>
         </li>
         <li
           class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:border-red-100 hover:shadow-md"
@@ -132,10 +125,8 @@
           >
             👥
           </div>
-          <h3 class="mt-4 font-semibold text-gray-900">多人协作</h3>
-          <p class="mt-2 text-sm leading-relaxed text-gray-600">
-            组织与项目成员及角色；项目在线协作者提示，任务分配与活动同步。
-          </p>
+          <h3 class="mt-4 font-semibold text-gray-900">角色与协作</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-600">Owner / Admin / Member / Guest。</p>
         </li>
         <li
           class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:border-red-100 hover:shadow-md"
@@ -143,12 +134,10 @@
           <div
             class="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100 text-xl text-red-600"
           >
-            💬
+            🔒
           </div>
-          <h3 class="mt-4 font-semibold text-gray-900">评论与消息</h3>
-          <p class="mt-2 text-sm leading-relaxed text-gray-600">
-            任务内讨论与项目动态；组织内私信与消息中心，便于跟进与沟通。
-          </p>
+          <h3 class="mt-4 font-semibold text-gray-900">安全与审计</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-600">RBAC、操作审计日志。</p>
         </li>
         <li
           class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:border-red-100 hover:shadow-md"
@@ -156,12 +145,10 @@
           <div
             class="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100 text-xl text-red-600"
           >
-            📁
+            📊
           </div>
-          <h3 class="mt-4 font-semibold text-gray-900">文件与资源中心</h3>
-          <p class="mt-2 text-sm leading-relaxed text-gray-600">
-            任务侧上传交付物；项目「资源中心」汇总全项目文件，支持预览与下载（需配置对象存储）。
-          </p>
+          <h3 class="mt-4 font-semibold text-gray-900">报表与负载</h3>
+          <p class="mt-2 text-sm leading-relaxed text-gray-600">完成率、延期与工作量。</p>
         </li>
         <li
           class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:border-red-100 hover:shadow-md"
@@ -171,9 +158,9 @@
           >
             ✨
           </div>
-          <h3 class="mt-4 font-semibold text-gray-900">AI 智能助手</h3>
+          <h3 class="mt-4 font-semibold text-gray-900">AI 与手动任务</h3>
           <p class="mt-2 text-sm leading-relaxed text-gray-600">
-            在项目内将自然语言解析为多条任务草稿并写入（需配置 OpenRouter）；与手动建任务并存。
+            PRD / 文本 AI 拆解导入；亦可手动填写任务、指定负责人与协助人、侧栏维护。
           </p>
         </li>
       </ul>
