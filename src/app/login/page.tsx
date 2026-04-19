@@ -3,8 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/cn";
 import { parseApiError } from "@/lib/parse-api-error";
-import { PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/product-brand";
+import { PRODUCT_TAGLINE } from "@/lib/product-brand";
 
 type Mode = "login" | "register";
 
@@ -131,19 +132,23 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4 py-10 text-gray-900">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-100 px-4 py-10 text-gray-900">
       <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-lg">
-        <h1 className="text-center text-xl font-bold leading-snug tracking-tight text-red-600 sm:text-2xl">
-          {PRODUCT_NAME}
+        <h1 className="text-center text-xl font-bold leading-snug tracking-tight sm:text-2xl">
+          <span className="text-red-600">ProjectHub</span>
+          <span className="text-gray-900"> 多人协作项目管理平台</span>
         </h1>
         <p className="mt-2 text-center text-xs leading-relaxed text-gray-500 sm:text-sm">{PRODUCT_TAGLINE}</p>
 
-        <div className="mt-6 flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+        <div className="mt-6 flex gap-2 rounded-xl border border-gray-200 bg-gray-50/80 p-1.5">
           <button
             type="button"
-            className={`flex-1 rounded-md py-2 text-sm font-medium transition ${
-              mode === "login" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600"
-            }`}
+            className={cn(
+              "flex-1 rounded-lg py-2.5 text-sm font-medium transition",
+              mode === "login" ?
+                "border border-blue-500 bg-white text-blue-600 shadow-sm"
+              : "border border-transparent text-gray-500 hover:text-gray-700",
+            )}
             onClick={() => {
               setMode("login");
               setError(null);
@@ -153,9 +158,12 @@ export default function LoginPage() {
           </button>
           <button
             type="button"
-            className={`flex-1 rounded-md py-2 text-sm font-medium transition ${
-              mode === "register" ? "bg-white text-gray-900 shadow-sm" : "text-gray-600"
-            }`}
+            className={cn(
+              "flex-1 rounded-lg py-2.5 text-sm font-medium transition",
+              mode === "register" ?
+                "border border-blue-500 bg-white text-blue-600 shadow-sm"
+              : "border border-transparent text-gray-500 hover:text-gray-700",
+            )}
             onClick={() => {
               setMode("register");
               setError(null);
@@ -169,7 +177,7 @@ export default function LoginPage() {
           <div>
             <label className="text-xs font-medium text-gray-600">邮箱</label>
             <input
-              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -180,7 +188,7 @@ export default function LoginPage() {
           <div>
             <label className="text-xs font-medium text-gray-600">密码</label>
             <input
-              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -194,7 +202,7 @@ export default function LoginPage() {
               <div>
                 <label className="text-xs font-medium text-gray-600">昵称 / 姓名</label>
                 <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -207,7 +215,7 @@ export default function LoginPage() {
                   工作空间名称 <span className="font-normal text-gray-400">（可选）</span>
                 </label>
                 <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
                   type="text"
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
@@ -217,14 +225,16 @@ export default function LoginPage() {
             </>
           ) : null}
 
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+          <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug text-gray-700">
             <input
               type="checkbox"
-              className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
             />
-            在此设备记住我（约 30 天）；关闭则短期有效（约 1 天）
+            <span>
+              在此设备记住我（约 30 天）；关闭则短期有效（约 1 天）
+            </span>
           </label>
 
           {mode === "login" ? (
@@ -245,7 +255,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 disabled={loading || !email || !password}
-                className="w-full rounded-lg bg-red-600 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+                className="w-full rounded-lg bg-red-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
                 onClick={() => void submitLogin()}
               >
                 {loading ? "处理中…" : "登录"}
@@ -254,7 +264,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 disabled={loading || !email || password.length < 8}
-                className="w-full rounded-lg bg-red-600 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+                className="w-full rounded-lg bg-red-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
                 onClick={() => void submitRegister()}
               >
                 {loading ? "处理中…" : "注册并进入"}
@@ -263,18 +273,25 @@ export default function LoginPage() {
 
             {showDemoLogin ? (
               <>
-                <p className="border-t border-gray-100 pt-4 text-center text-xs text-gray-400">或</p>
+                <div className="relative py-2">
+                  <div className="absolute inset-0 flex items-center" aria-hidden>
+                    <div className="w-full border-t border-gray-200" />
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="bg-white px-3 text-gray-400">或</span>
+                  </div>
+                </div>
 
                 <button
                   type="button"
                   disabled={loading}
-                  className="w-full rounded-lg border border-dashed border-red-300 bg-red-50 py-2.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  className="w-full rounded-lg border border-dashed border-red-300 bg-red-50 py-3 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
                   onClick={() => void demoLogin()}
                 >
                   {loading ? "处理中…" : "一键演示账号登录"}
                 </button>
                 <p className="text-center text-[11px] leading-relaxed text-gray-500">
-                  演示账号：demo@projecthub.io / demo123456。
+                  演示账号: demo@projecthub.io / demo123456。
                   <br />
                   若生产库从未执行 seed，点击上方按钮会自动创建演示数据。
                 </p>
