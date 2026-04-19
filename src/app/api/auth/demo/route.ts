@@ -17,9 +17,20 @@ const Body = z.object({
 
 /**
  * 一键演示登录：若无演示用户则写入数据库后再发会话。
+ * 生产环境默认关闭（避免误切到演示账号）；需 NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true 与本变量一致。
  */
 export async function POST(req: Request) {
   try {
+    const demoAllowed =
+      process.env.NODE_ENV !== "production" ||
+      process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN === "true";
+    if (!demoAllowed) {
+      return NextResponse.json(
+        { error: "演示登录已在当前环境关闭。请使用邮箱登录，或联系管理员开启 NEXT_PUBLIC_ENABLE_DEMO_LOGIN。" },
+        { status: 403 },
+      );
+    }
+
     let json: unknown;
     try {
       json = await req.json();

@@ -45,7 +45,10 @@ export function useProjectRealtime(
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
+        const res = await fetch("/api/auth/me", {
+          credentials: "include",
+          cache: "no-store",
+        });
         const j = (await res.json()) as { user?: { id?: string } };
         if (!cancelled && j.user?.id) setMeId(j.user.id);
       } catch {

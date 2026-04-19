@@ -6,6 +6,9 @@ import { OrgAppShell } from "@/components/layout/OrgAppShell";
 import { OrgSidebar } from "@/components/layout/OrgSidebar";
 import { getPrimaryOrgMembership, hasProjectMembershipInOrg } from "@/lib/workspace";
 
+/** 含登录态与侧栏用户，必须每请求重算，避免任何边缘缓存串用户 */
+export const dynamic = "force-dynamic";
+
 export default async function OrgLayout({
   children,
   params,

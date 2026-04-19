@@ -10,6 +10,14 @@ import {
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+/** 禁止 CDN/浏览器缓存「当前登录用户」响应，避免串账号 */
+const NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, max-age=0, must-revalidate",
+  Vary: "Cookie",
+};
+
+export const dynamic = "force-dynamic";
+
 /** 与个人中心头像一致：可为 data:image 大图或 https 外链；清空传 "" */
 const avatarPatchSchema = z.union([
   z.literal(""),
@@ -43,14 +51,14 @@ const PatchBody = z.object({
 export async function GET() {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ user: null }, { status: 401 });
+    return NextResponse.json({ user: null }, { status: 401, headers: NO_STORE_HEADERS });
   }
   const user = await prisma.user.findUnique({
     where: { id: session.sub },
     select: { id: true, email: true, username: true, name: true, avatarUrl: true },
   });
   if (!user) {
-    return NextResponse.json({ user: null }, { status: 401 });
+    return NextResponse.json({ user: null }, { status: 401, headers: NO_STORE_HEADERS });
   }
   const orgs = await prisma.orgMember.findMany({
     where: { userId: user.id },
@@ -58,13 +66,16 @@ export async function GET() {
     /** 与首页跳转、`getPrimaryOrgMembership` 一致：首个加入的组织为默认工作空间 */
     orderBy: { joinedAt: "asc" },
   });
-  return NextResponse.json({
-    user,
-    organizations: orgs.map((o) => ({
-      ...o.org,
-      role: o.role,
-    })),
-  });
+  return NextResponse.json(
+    {
+      user,
+      organizations: orgs.map((o) => ({
+        ...o.org,
+        role: o.role,
+      })),
+    },
+    { headers: NO_STORE_HEADERS },
+  );
 }
 
 export async function PATCH(req: Request) {
@@ -147,7 +158,7 @@ export async function PATCH(req: Request) {
     select: { id: true, email: true, username: true, name: true, avatarUrl: true },
   });
 
-  const res = NextResponse.json({ user: updated });
+  const res = NextResponse.json({ user: updated }, { headers: NO_STORE_HEADERS });
 
   if (data.email !== undefined) {
     const token = await signSessionToken(

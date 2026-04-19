@@ -8,8 +8,17 @@ import { PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/product-brand";
 
 type Mode = "login" | "register";
 
+/** 生产环境默认关闭演示入口，避免误点被切到 demo 账号；需显式设 NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true */
+const showDemoLogin =
+  process.env.NODE_ENV !== "production" ||
+  process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN === "true";
+
 async function redirectAfterAuth(router: ReturnType<typeof useRouter>) {
-  const meRes = await fetch("/api/auth/me", { credentials: "include" });
+  /** no-store：避免浏览器沿用上一位登录用户的 /api/auth/me 缓存响应 */
+  const meRes = await fetch("/api/auth/me", {
+    credentials: "include",
+    cache: "no-store",
+  });
   if (!meRes.ok) {
     return {
       ok: false as const,
@@ -252,21 +261,25 @@ export default function LoginPage() {
               </button>
             )}
 
-            <p className="border-t border-gray-100 pt-4 text-center text-xs text-gray-400">或</p>
+            {showDemoLogin ? (
+              <>
+                <p className="border-t border-gray-100 pt-4 text-center text-xs text-gray-400">或</p>
 
-            <button
-              type="button"
-              disabled={loading}
-              className="w-full rounded-lg border border-dashed border-red-300 bg-red-50 py-2.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
-              onClick={() => void demoLogin()}
-            >
-              {loading ? "处理中…" : "一键演示账号登录"}
-            </button>
-            <p className="text-center text-[11px] leading-relaxed text-gray-500">
-              演示账号：demo@projecthub.io / demo123456。
-              <br />
-              若生产库从未执行 seed，点击上方按钮会自动创建演示数据。
-            </p>
+                <button
+                  type="button"
+                  disabled={loading}
+                  className="w-full rounded-lg border border-dashed border-red-300 bg-red-50 py-2.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  onClick={() => void demoLogin()}
+                >
+                  {loading ? "处理中…" : "一键演示账号登录"}
+                </button>
+                <p className="text-center text-[11px] leading-relaxed text-gray-500">
+                  演示账号：demo@projecthub.io / demo123456。
+                  <br />
+                  若生产库从未执行 seed，点击上方按钮会自动创建演示数据。
+                </p>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
