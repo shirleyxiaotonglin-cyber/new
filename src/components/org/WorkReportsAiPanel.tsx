@@ -12,7 +12,6 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
-import { AiAttributionNote } from "@/components/ai/AiAttributionNote";
 
 type ReportData = {
   reportTitle?: string;
@@ -102,22 +101,23 @@ export function WorkReportsAiPanel({
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
               <Sparkles className="h-5 w-5 text-red-600" aria-hidden />
-              智能工作报告
+              AI 工作报告（OpenRouter）
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-gray-600">
-              基于您当前任务数据，梳理进度与完成情况，一键生成<strong>今日 / 本周 / 本月</strong>文字报告草稿，可在生成结果上继续修改后对外使用。
+              基于当前组织内「分配给你」的任务数据，自动分析进度与完成情况，生成今日 / 本周 /
+              本月工作报告。需配置环境变量{" "}
+              <code className="rounded bg-gray-100 px-1 text-xs">OPENROUTER_API_KEY</code>。
             </p>
             {aiStatus ? (
-              <>
-                <p className="mt-2 text-xs text-gray-500">
-                  {aiStatus.configured ?
-                    "智能助手已就绪，可直接点击右侧按钮生成。"
-                  : "智能助手尚未开通，按钮暂不可用。如需使用请联系管理员。"}
-                </p>
-                <AiAttributionNote model={aiStatus.model} />
-              </>
+              <p className="mt-2 text-xs text-gray-500">
+                {aiStatus.configured ?
+                  <>
+                    已就绪 · 模型 <span className="font-mono text-gray-700">{aiStatus.model}</span>
+                  </>
+                : "未检测到 API Key，生成按钮将不可用。"}
+              </p>
             ) : (
-              <p className="mt-2 text-xs text-gray-400">正在检测…</p>
+              <p className="mt-2 text-xs text-gray-400">正在检测配置…</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2">

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, CalendarRange, Loader2, Sparkles } from "lucide-react";
-import { AiAttributionNote } from "@/components/ai/AiAttributionNote";
 
 type PlanItem = {
   taskId?: string | null;
@@ -106,22 +105,25 @@ export function MyTasksPlanPanel({
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
             <Sparkles className="h-5 w-5 text-red-600" aria-hidden />
-            智能计划表
+            AI 计划表（OpenRouter）
           </h2>
           <p className="mt-1 text-sm text-gray-600">
-            根据与您相关的任务列表，自动生成<strong>今日安排</strong>与<strong>本周节奏</strong>建议，便于安排优先级与时间块。
+            根据当前「分配给你」的任务列表，自动生成今日安排与本周节奏。需在环境变量中配置{" "}
+            <code className="rounded bg-gray-100 px-1 text-xs">OPENROUTER_API_KEY</code>。
           </p>
           {aiStatus ? (
-            <>
-              <p className="mt-2 text-xs text-gray-500">
-                {aiStatus.configured ?
-                  "智能助手已就绪，可直接点击下方按钮生成。"
-                : "智能助手尚未开通，按钮暂不可用。如需使用请联系管理员。"}
-              </p>
-              <AiAttributionNote model={aiStatus.model} />
-            </>
+            <p className="mt-2 text-xs text-gray-500">
+              {aiStatus.configured ?
+                <>
+                  已就绪 · 模型 <span className="font-mono text-gray-700">{aiStatus.model}</span>
+                </>
+              : <>
+                  未检测到 API Key，按钮将不可用直至配置完成。
+                </>
+              }
+            </p>
           ) : (
-            <p className="mt-2 text-xs text-gray-400">正在检测…</p>
+            <p className="mt-2 text-xs text-gray-400">正在检测 OpenRouter 配置…</p>
           )}
         </div>
         <div className="flex flex-wrap gap-2">

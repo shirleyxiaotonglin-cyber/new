@@ -10,9 +10,6 @@ import {
   isOpenRouterHttpError,
   openRouterComplete,
 } from "@/lib/openrouter";
-import { tasksInvolvingMember } from "@/lib/my-tasks-scope";
-
-export const maxDuration = 60;
 
 type Ctx = { params: Promise<{ orgId: string }> };
 
@@ -70,7 +67,7 @@ function buildSystemPrompt(scope: "today" | "week", todayLabel: string, weekRang
       `生成「今日计划表」：按合理顺序与时间段（如上午/下午/晚间或具体时段）排列，帮助用户在今天内推进工作。`
     : `生成「本周计划表」：按工作日（周一至周日）或「本周重点 / 待排期」分组，覆盖整周安排与里程碑。`;
 
-  return `你是项目管理与时间管理助手。用户会提供其「与我相关的任务」列表（负责人为我，或我为协助人；含项目名、状态、优先级、截止日期、进度等）。
+  return `你是项目管理与时间管理助手。用户会提供其「分配给我的任务」列表（含项目名、状态、优先级、截止日期、进度等）。
 ${scopeDesc}
 
 必须只输出一个 JSON 对象，不要 markdown 包裹，不要多余说明。格式严格如下：
@@ -118,7 +115,11 @@ export async function POST(req: Request, ctx: Ctx) {
   const weekRangeLabel = `${format(weekMonday, "yyyy-MM-dd", { locale: zhCN })} 至 ${format(weekSunday, "yyyy-MM-dd", { locale: zhCN })}（当周周一至周日）`;
 
   const tasks = await prisma.task.findMany({
-    where: tasksInvolvingMember(orgId, session.sub),
+    where: {
+      assigneeId: session.sub,
+      project: { orgId },
+      parentId: null,
+    },
     orderBy: [{ dueDate: "asc" }, { sortOrder: "asc" }],
     take: 80,
     select: {
@@ -151,7 +152,7 @@ export async function POST(req: Request, ctx: Ctx) {
 
   const userContent =
     tasks.length === 0 ?
-      "当前没有与我相关的任务（负责人或协助）。请仍输出合法 JSON：summary 说明无任务可排；sections 可为空数组或一条「暂无任务」提示；tips 给出如何新建/认领任务的建议。"
+      "当前没有分配给我的任务。请仍输出合法 JSON：summary 说明无任务可排；sections 可为空数组或一条「暂无任务」提示；tips 给出如何新建/认领任务的建议。"
     : JSON.stringify(payload, null, 2);
 
   const systemPrompt = buildSystemPrompt(scope, todayLabel, weekRangeLabel);
@@ -185,7 +186,7 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json(
         {
           error:
-            "智能计划功能尚未开通，无法生成安排表。如需使用，请联系管理员启用智能助手。",
+            "未检测到 OPENROUTER_API_KEY。请在 .env 或部署环境配置后重启 / Redeploy。",
           code: "MISSING_API_KEY",
         },
         { status: 503 },

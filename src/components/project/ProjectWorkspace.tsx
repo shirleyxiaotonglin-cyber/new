@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -29,15 +28,12 @@ import {
   Check,
   Columns3,
   Copy,
-  FolderOpen,
   GanttChart as GanttIcon,
   LayoutList,
   Loader2,
   MessageCircle,
   Pencil,
-  User,
   Plus,
-  Save,
   Search,
   Sparkles,
   Trash2,
@@ -50,11 +46,13 @@ import { TaskStatus, TaskPriority } from "@/lib/constants";
 import { CreateTaskModal } from "@/components/project/CreateTaskModal";
 import { GanttChartView } from "@/components/project/GanttChartView";
 import { useProjectRealtime } from "@/hooks/useProjectRealtime";
-import { PeerContactModal, type PeerProfile } from "@/components/chat/PeerContactModal";
+import {
+  DirectChatDrawer,
+  type ChatPeer,
+  type DmPushPayload,
+} from "@/components/chat/DirectChatDrawer";
 import { TaskChatSection } from "@/components/chat/TaskChatSection";
-import { TaskDeliverablesSection } from "@/components/project/TaskDeliverablesSection";
-import { AiAttributionNote } from "@/components/ai/AiAttributionNote";
-import { AI_TASK_PARSE_USER_MESSAGE } from "@/lib/ai-user-messages";
+import { useUserRealtime, type DirectMessageEvent } from "@/hooks/useUserRealtime";
 
 type TaskRow = {
   id: string;
@@ -65,39 +63,14 @@ type TaskRow = {
   dueDate: string | null;
   startDate: string | null;
   progress?: number | null;
-  assignee: {
-    id: string;
-    name: string;
-    email?: string | null;
-    avatarUrl?: string | null;
-  } | null;
+  assignee: { id: string; name: string } | null;
   tags: { tag: { id: string; name: string; color: string } }[];
   dependenciesPredecessors: {
     predecessor: { id: string; title: string; status: string };
   }[];
   subtasks: { id: string; title: string; status: string }[];
-  assistants?: {
-    user: { id: string; name: string; email?: string | null; avatarUrl?: string | null };
-  }[];
+  assistants?: { user: { id: string; name: string; email?: string | null } }[];
 };
-
-type ProjectMemberOption = {
-  userId: string;
-  user: { id: string; name: string; email: string; avatarUrl?: string | null };
-};
-
-function buildPeerProfileFromAssignee(
-  assignee: NonNullable<TaskRow["assignee"]>,
-  members: ProjectMemberOption[],
-): PeerProfile {
-  const row = members.find((m) => m.user.id === assignee.id);
-  return {
-    id: assignee.id,
-    name: assignee.name,
-    email: row?.user.email ?? assignee.email ?? undefined,
-    avatarUrl: row?.user.avatarUrl ?? assignee.avatarUrl ?? undefined,
-  };
-}
 
 function apiErrorWithHint(j: Record<string, unknown>, fallback: string): string {
   const err = typeof j.error === "string" ? j.error : fallback;
@@ -116,6 +89,11 @@ function normalizeTaskRow(t: TaskRow): TaskRow {
     tags: Array.isArray(t.tags) ? t.tags : [],
   };
 }
+
+type ProjectMemberOption = {
+  userId: string;
+  user: { id: string; name: string; email: string };
+};
 
 type View =
   | "board"
@@ -270,20 +248,6 @@ export function ProjectWorkspace({
   /** 进入项目时默认视图，默认甘特图 */
   defaultView?: View;
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const taskFromUrl = searchParams.get("task");
-
-  const clearTaskFromUrl = useCallback(() => {
-    if (!searchParams.get("task")) return;
-    router.replace(`/org/${orgId}/project/${projectId}`, { scroll: false });
-  }, [searchParams, router, orgId, projectId]);
-
-  const closeTaskSidebar = useCallback(() => {
-    setSelected(null);
-    clearTaskFromUrl();
-  }, [clearTaskFromUrl]);
-
   const [view, setView] = useState<View>(defaultView);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [projectName, setProjectName] = useState("");
@@ -328,8 +292,9 @@ export function ProjectWorkspace({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [projectIdCopied, setProjectIdCopied] = useState(false);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
-  /** 负责人 / 协助人资料弹层 → 跳转消息中心 */
-  const [contactUser, setContactUser] = useState<PeerProfile | null>(null);
+  /** 私聊抽屉 */
+  const [dmOpen, setDmOpen] = useState(false);
+  const [dmPeer, setDmPeer] = useState<ChatPeer | null>(null);
   /** 任务讨论 SSE 透传 */
   const [taskChatRemote, setTaskChatRemote] = useState<{
     taskId: string;
@@ -341,13 +306,13 @@ export function ProjectWorkspace({
       sender: { id: string; name: string; avatarUrl: string | null };
     };
   } | null>(null);
+  /** 私聊 SSE：进入项目即可收推送（无需先打开抽屉） */
+  const [dmPush, setDmPush] = useState<DmPushPayload | null>(null);
+  const clearDmPush = useCallback(() => setDmPush(null), []);
+
   /** 标题/描述防抖写入，避免未失焦就刷新导致未保存 */
   const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const descSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const taskDetailTitleRef = useRef<HTMLInputElement | null>(null);
-  const taskDetailDescRef = useRef<HTMLTextAreaElement | null>(null);
-  const [detailSaveFeedback, setDetailSaveFeedback] = useState<string | null>(null);
-  const [detailSaving, setDetailSaving] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -472,6 +437,19 @@ export function ProjectWorkspace({
     onTaskChat: (p) => setTaskChatRemote(p),
   });
 
+  useUserRealtime(!loading && !loadError && !!meId, (ev) => {
+    if (ev.type !== "direct_message") return;
+    const d = ev as DirectMessageEvent;
+    setDmPush({
+      threadId: d.threadId,
+      message: d.message,
+    });
+  });
+
+  useEffect(() => {
+    setDmPush(null);
+  }, [dmPeer?.id]);
+
   useEffect(() => {
     setSelected((prev) => {
       if (!prev) return null;
@@ -480,18 +458,6 @@ export function ProjectWorkspace({
       return next ?? null;
     });
   }, [tasks]);
-
-  /** 从「我的任务」等入口：?task=id 打开右侧详情 */
-  useEffect(() => {
-    if (loading || loadError || tasks.length === 0) return;
-    if (!taskFromUrl) return;
-    const match = tasks.find((x) => x.id === taskFromUrl);
-    if (match) setSelected(match);
-  }, [taskFromUrl, loading, loadError, tasks]);
-
-  useEffect(() => {
-    setDetailSaveFeedback(null);
-  }, [selected?.id]);
 
   useEffect(() => {
     return () => {
@@ -535,7 +501,6 @@ export function ProjectWorkspace({
       }
       setSaveError(null);
       setSelected(null);
-      clearTaskFromUrl();
       await load({ silent: true });
       return true;
     } catch {
@@ -585,40 +550,6 @@ export function ProjectWorkspace({
     } catch {
       setSaveError("网络异常，请稍后重试");
       return false;
-    }
-  }
-
-  async function saveTaskDetailDraft() {
-    if (!selected) return;
-    setDetailSaveFeedback(null);
-    if (titleSaveTimerRef.current) {
-      clearTimeout(titleSaveTimerRef.current);
-      titleSaveTimerRef.current = null;
-    }
-    if (descSaveTimerRef.current) {
-      clearTimeout(descSaveTimerRef.current);
-      descSaveTimerRef.current = null;
-    }
-    const title = taskDetailTitleRef.current?.value ?? selected.title;
-    const descRaw = taskDetailDescRef.current?.value ?? "";
-    const description = descRaw.trim() ? descRaw : null;
-    const payload: Record<string, unknown> = {};
-    if (title !== selected.title) payload.title = title;
-    if (description !== (selected.description ?? null)) payload.description = description;
-    if (Object.keys(payload).length === 0) {
-      setDetailSaveFeedback("当前没有需要保存的修改");
-      window.setTimeout(() => setDetailSaveFeedback(null), 2500);
-      return;
-    }
-    setDetailSaving(true);
-    try {
-      const ok = await patchTask(selected.id, payload);
-      if (ok) {
-        setDetailSaveFeedback("已保存");
-        window.setTimeout(() => setDetailSaveFeedback(null), 2500);
-      }
-    } finally {
-      setDetailSaving(false);
     }
   }
 
@@ -732,13 +663,6 @@ export function ProjectWorkspace({
               <Plus className="h-4 w-4" />
               新建任务
             </button>
-            <Link
-              href={`/org/${orgId}/project/${projectId}/assets`}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-            >
-              <FolderOpen className="h-4 w-4" aria-hidden />
-              资源中心
-            </Link>
             <nav className="flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1">
             {(
               [
@@ -882,32 +806,17 @@ export function ProjectWorkspace({
                         <div className="flex flex-wrap items-center gap-2">
                           <span>{t.assignee?.name ?? "—"}</span>
                           {t.assignee && meId && t.assignee.id !== meId ? (
-                            <>
-                              <button
-                                type="button"
-                                className="rounded border border-red-200 bg-white px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-50"
-                                onClick={() => {
-                                  const q = new URLSearchParams({
-                                    peer: t.assignee!.id,
-                                    project: projectId,
-                                  });
-                                  router.push(`/org/${orgId}/messages?${q.toString()}`);
-                                }}
-                              >
-                                <MessageCircle className="mr-0.5 inline h-3 w-3" aria-hidden />
-                                私聊
-                              </button>
-                              <button
-                                type="button"
-                                className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
-                                onClick={() => {
-                                  setContactUser(buildPeerProfileFromAssignee(t.assignee!, projectMembers));
-                                }}
-                              >
-                                <User className="mr-0.5 inline h-3 w-3" aria-hidden />
-                                资料
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                              onClick={() => {
+                                setDmPeer({ id: t.assignee!.id, name: t.assignee!.name });
+                                setDmOpen(true);
+                              }}
+                            >
+                              <MessageCircle className="mr-0.5 inline h-3 w-3" aria-hidden />
+                              私聊
+                            </button>
                           ) : null}
                         </div>
                       </td>
@@ -1026,39 +935,63 @@ export function ProjectWorkspace({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-800">
                 <Sparkles className="h-4 w-4 text-red-600" />
-                智能任务解析
+                AI 文本分析（OpenRouter）
                 <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-normal text-gray-600">
-                  与看板 / 列表 / 甘特同源
+                  看板 / 列表 / 甘特等同源同步
                 </span>
               </div>
               {openRouterStatus ? (
                 openRouterStatus.configured ? (
-                  <span className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-xs text-green-800">
-                    智能助手已就绪
+                  <span
+                    className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-xs text-green-800"
+                    title={
+                      openRouterStatus.effectiveHttpReferer != null &&
+                      openRouterStatus.effectiveHttpReferer !== ""
+                        ? `HTTP-Referer（发往 OpenRouter）: ${openRouterStatus.effectiveHttpReferer}`
+                        : openRouterStatus.omitAttribution
+                          ? "未发送 HTTP-Referer（OPENROUTER_OMIT_ATTRIBUTION）"
+                          : "服务端已配置 OPENROUTER_API_KEY"
+                    }
+                  >
+                    OpenRouter 已就绪 · {openRouterStatus.model}
                   </span>
                 ) : (
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900">
-                    智能助手未开通
+                  <span
+                    className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900"
+                    title="请在环境变量中设置 OPENROUTER_API_KEY"
+                  >
+                    未检测到 API Key
                   </span>
                 )
               ) : (
                 <span className="inline-flex items-center gap-1 text-xs text-gray-400">
                   <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                  检测中…
+                  检查连接…
                 </span>
               )}
             </div>
-            {!openRouterStatus?.configured && openRouterStatus !== null && (
-              <p className="mt-2 rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2 text-[11px] leading-relaxed text-amber-950">
-                管理员开通智能助手后，您可把会议纪要与需求文字<strong>一键拆成多条任务</strong>。未开通时按钮不可用；您仍可使用「新建任务」手动录入。
+            {openRouterStatus?.configured && openRouterStatus.refererSource === "default_localhost" ? (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-950">
+                当前服务端发往 OpenRouter 的 HTTP-Referer 为默认{" "}
+                <code className="rounded bg-amber-100/80 px-0.5">localhost</code>
+                。若在 Vercel 等环境仍用此默认值，可能与「在其它网站同一模型可用」不一致；请设置{" "}
+                <code className="rounded bg-amber-100/80 px-0.5">NEXT_PUBLIC_APP_URL</code> 或{" "}
+                <code className="rounded bg-amber-100/80 px-0.5">OPENROUTER_HTTP_REFERER</code>{" "}
+                为你的线上 https 根地址。
               </p>
-            )}
-            <p className="mt-2 text-xs leading-relaxed text-gray-600">
-              <strong>能做什么：</strong>
-              粘贴会议纪要、需求片段或待办清单，系统尝试识别任务名称、任务内容、负责人与协助人（姓名或邮箱）、状态、起止日期、优先级与进度；解析结果可在表格中预览，确认后写入本项目。
-              写入成功后会自动打开<strong>第一条</strong>新任务便于核对。
+            ) : null}
+            {openRouterStatus?.configured && openRouterStatus.omitAttribution ? (
+              <p className="mt-2 text-[11px] text-gray-600">
+                已开启 OPENROUTER_OMIT_ATTRIBUTION：请求不附带 HTTP-Referer / X-Title（仅建议用于排查）。
+              </p>
+            ) : null}
+            <p className="mt-2 text-xs text-gray-500">
+              粘贴会议纪要、需求片段或待办清单；解析结果与<strong>任务详情侧栏</strong>字段一一对应：任务名称、任务内容、负责人与协助人（支持姓名或邮箱）、当前状态、开始/截止日期、优先级、甘特进度（0–100%）。
+              点击「预览解析结果」后在下方表格核对，再「确认写入项目」——写入后会自动打开<strong>第一条</strong>任务详情便于核对。
+              需在环境变量中设置 <code className="rounded bg-gray-100 px-0.5">OPENROUTER_API_KEY</code>（本机
+              <code className="rounded bg-gray-100 px-0.5">.env</code>，Vercel 在 Settings → Environment
+              Variables，改后需 Redeploy）；未配置时接口会返回 503。
             </p>
-            {openRouterStatus ? <AiAttributionNote model={openRouterStatus.model} /> : null}
             {aiNotice ? (
               <p className="mt-2 text-xs text-green-700">{aiNotice}</p>
             ) : null}
@@ -1089,49 +1022,13 @@ export function ProjectWorkspace({
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ text: aiText, apply: false }),
                     });
-                    const text = await res.text();
-                    let j: Record<string, unknown>;
-                    try {
-                      j = text.trim() ? (JSON.parse(text) as Record<string, unknown>) : {};
-                    } catch {
-                      setSaveError(AI_TASK_PARSE_USER_MESSAGE);
-                      setAiPreview(null);
-                      return;
-                    }
+                    const j = await res.json();
                     if (!res.ok) {
-                      setSaveError(
-                        apiErrorWithHint(j, AI_TASK_PARSE_USER_MESSAGE),
-                      );
+                      setSaveError(apiErrorWithHint(j as Record<string, unknown>, "分析失败"));
                       setAiPreview(null);
                       return;
                     }
-                    if (j.success === false) {
-                      setSaveError(
-                        typeof j.error === "string" ? j.error : AI_TASK_PARSE_USER_MESSAGE,
-                      );
-                      if (Array.isArray(j.tasks) && j.tasks.length > 0) {
-                        setAiPreview(j.tasks as NonNullable<typeof aiPreview>);
-                      } else {
-                        setAiPreview(null);
-                      }
-                      if (j.fallback === true) {
-                        setAiNotice(
-                          "当前为示例任务（智能服务不可用或解析失败时显示），请检查网络或稍后重试。",
-                        );
-                      }
-                      return;
-                    }
-                    if (j.success === true && Array.isArray(j.tasks)) {
-                      setAiPreview(j.tasks as NonNullable<typeof aiPreview>);
-                    } else if (j.success === undefined && Array.isArray(j.tasks)) {
-                      /* 兼容旧版 { applied, tasks } 无 success 字段 */
-                      setAiPreview(j.tasks as NonNullable<typeof aiPreview>);
-                    } else {
-                      setAiPreview(null);
-                    }
-                  } catch {
-                    setSaveError(AI_TASK_PARSE_USER_MESSAGE);
-                    setAiPreview(null);
+                    setAiPreview(Array.isArray(j.tasks) ? j.tasks : []);
                   } finally {
                     setAiLoading(false);
                   }
@@ -1159,44 +1056,19 @@ export function ProjectWorkspace({
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ text: aiText, apply: true }),
                     });
-                    const text = await res.text();
-                    let j: Record<string, unknown>;
-                    try {
-                      j = text.trim() ? (JSON.parse(text) as Record<string, unknown>) : {};
-                    } catch {
-                      setSaveError(AI_TASK_PARSE_USER_MESSAGE);
-                      return;
-                    }
+                    const j = await res.json();
                     if (!res.ok) {
-                      setSaveError(
-                        apiErrorWithHint(j, AI_TASK_PARSE_USER_MESSAGE),
-                      );
+                      setSaveError(apiErrorWithHint(j as Record<string, unknown>, "创建失败"));
                       return;
                     }
-                    if (j.success === false) {
-                      setSaveError(
-                        typeof j.error === "string" ? j.error : AI_TASK_PARSE_USER_MESSAGE,
-                      );
-                      return;
-                    }
-                    const applyOk =
-                      j.success === true ||
-                      (j.success === undefined && j.applied === true);
-                    if (!applyOk) {
-                      setSaveError(AI_TASK_PARSE_USER_MESSAGE);
-                      return;
-                    }
-                    const createdTasks = Array.isArray(j.tasks) ? j.tasks : [];
-                    const n =
-                      typeof j.count === "number" ? j.count : createdTasks.length;
+                    const n = typeof j.count === "number" ? j.count : j.tasks?.length ?? 0;
                     setAiNotice(`已创建 ${n} 条任务并同步到当前项目。`);
                     setAiPreview(null);
                     await load({ silent: true });
-                    if (createdTasks.length > 0) {
-                      setSelected(normalizeTaskRow(createdTasks[0] as TaskRow));
+                    const created = j.tasks;
+                    if (Array.isArray(created) && created.length > 0) {
+                      setSelected(normalizeTaskRow(created[0] as TaskRow));
                     }
-                  } catch {
-                    setSaveError(AI_TASK_PARSE_USER_MESSAGE);
                   } finally {
                     setAiApplyLoading(false);
                   }
@@ -1272,28 +1144,15 @@ export function ProjectWorkspace({
       {/* 任务侧栏：flex 列 + min-h-0 才能让内部 overflow-y-auto 真正出现滚动条 */}
       {selected && (
         <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-gray-200 bg-white shadow-2xl">
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-red-600 px-4 py-3 text-white">
+          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-red-600 px-4 py-3 text-white">
             <h2 className="text-sm font-semibold">任务详情</h2>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                disabled={detailSaving}
-                className="inline-flex items-center gap-1 rounded-md border border-white/40 bg-white/10 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-white/20 disabled:opacity-50"
-                onClick={() => void saveTaskDetailDraft()}
-              >
-                {detailSaving ?
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                : <Save className="h-3.5 w-3.5" aria-hidden />}
-                保存
-              </button>
-              <button
-                type="button"
-                className="text-red-100 hover:text-white"
-                onClick={closeTaskSidebar}
-              >
-                关闭
-              </button>
-            </div>
+            <button
+              type="button"
+              className="text-red-100 hover:text-white"
+              onClick={() => setSelected(null)}
+            >
+              关闭
+            </button>
           </div>
           {saveError ?
             <div
@@ -1311,14 +1170,10 @@ export function ProjectWorkspace({
             </div>
           : null}
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-y-contain p-4 pb-8 text-sm text-gray-800">
-            <p className="rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] leading-snug text-gray-500">
-              名称与任务内容可失焦自动保存，或点右上角「保存」/底部「保存更改」立即提交。
-            </p>
             <div>
               <label className="text-xs font-medium text-gray-500">任务名称</label>
               <input
                 key={`${selected.id}-title`}
-                ref={taskDetailTitleRef}
                 className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 defaultValue={selected.title}
                 onChange={(e) => {
@@ -1344,7 +1199,6 @@ export function ProjectWorkspace({
               <label className="text-xs font-medium text-gray-500">任务内容</label>
               <textarea
                 key={`${selected.id}-desc`}
-                ref={taskDetailDescRef}
                 className="mt-1 w-full resize-y rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 rows={5}
                 placeholder="描述任务目标、验收标准等"
@@ -1373,7 +1227,25 @@ export function ProjectWorkspace({
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-500">负责人</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-gray-500">负责人</label>
+                {selected.assignee && meId && selected.assignee.id !== meId ? (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
+                    onClick={() => {
+                      setDmPeer({
+                        id: selected.assignee!.id,
+                        name: selected.assignee!.name,
+                      });
+                      setDmOpen(true);
+                    }}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+                    私聊
+                  </button>
+                ) : null}
+              </div>
               <select
                 className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 value={selected.assignee?.id ?? ""}
@@ -1390,56 +1262,11 @@ export function ProjectWorkspace({
                   </option>
                 ))}
               </select>
-              {selected.assignee ?
-                <div className="mt-2 rounded-lg border border-red-100 bg-red-50/70 px-3 py-2.5">
-                  <p className="text-[11px] font-medium text-gray-700">发消息（消息中心 · 私信）</p>
-                  {meId && selected.assignee.id !== meId ?
-                    <>
-                      <p className="mt-1 text-[11px] leading-snug text-gray-600">
-                        与负责人 <span className="font-medium">{selected.assignee.name}</span>{" "}
-                        一对一沟通进度、验收与文件。
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white shadow-sm hover:bg-red-700 sm:flex-none"
-                          onClick={() => {
-                            const q = new URLSearchParams({
-                              peer: selected.assignee!.id,
-                              project: projectId,
-                            });
-                            router.push(`/org/${orgId}/messages?${q.toString()}`);
-                          }}
-                        >
-                          <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
-                          向负责人发消息
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-800 hover:bg-white/90"
-                          onClick={() => {
-                            setContactUser(
-                              buildPeerProfileFromAssignee(selected.assignee!, projectMembers),
-                            );
-                          }}
-                        >
-                          <User className="h-3.5 w-3.5" aria-hidden />
-                          查看资料
-                        </button>
-                      </div>
-                    </>
-                  : meId && selected.assignee.id === meId ?
-                    <p className="mt-1 text-[11px] leading-snug text-gray-600">
-                      您已是负责人，无法与自己私聊。如需联系协助人，请在下方勾选成员后使用「向协助人发消息」。
-                    </p>
-                  : <p className="mt-1 text-[11px] text-gray-500">登录后即可向负责人发送私信。</p>}
-                </div>
-              : <p className="mt-2 text-[11px] text-gray-400">选定负责人后，可在此处跳转消息中心与其私信。</p>}
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500">协助人</label>
               <p className="mb-2 text-[11px] text-gray-400">
-                勾选项目成员作为协助人；勾选后可向其发消息（需先将成员加入本项目）。
+                请选择项目成员；需先将成员加入本项目。
               </p>
               <div className="max-h-36 space-y-1.5 overflow-y-auto rounded border border-gray-200 bg-gray-50/80 px-2 py-2">
                 {projectMembers.length === 0 ? (
@@ -1474,40 +1301,18 @@ export function ProjectWorkspace({
                             <span className="text-gray-500"> · {m.user.email}</span>
                           </span>
                         </label>
-                        {checked && meId && m.user.id !== meId ?
-                          <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-1 text-[10px] font-medium text-white shadow-sm hover:bg-red-700"
-                              onClick={() => {
-                                const q = new URLSearchParams({
-                                  peer: m.user.id,
-                                  project: projectId,
-                                });
-                                router.push(`/org/${orgId}/messages?${q.toString()}`);
-                              }}
-                            >
-                              <MessageCircle className="h-3 w-3 shrink-0" aria-hidden />
-                              发消息
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-50"
-                              onClick={() => {
-                                setContactUser({
-                                  id: m.user.id,
-                                  name: m.user.name,
-                                  email: m.user.email,
-                                  avatarUrl: m.user.avatarUrl ?? undefined,
-                                });
-                              }}
-                            >
-                              资料
-                            </button>
-                          </div>
-                        : checked && meId && m.user.id === meId ?
-                          <span className="shrink-0 text-[10px] text-gray-400">您</span>
-                        : null}
+                        {meId && m.user.id !== meId ? (
+                          <button
+                            type="button"
+                            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              setDmPeer({ id: m.user.id, name: m.user.name });
+                              setDmOpen(true);
+                            }}
+                          >
+                            私聊
+                          </button>
+                        ) : null}
                       </div>
                     );
                   })
@@ -1604,8 +1409,6 @@ export function ProjectWorkspace({
               onRemoteConsumed={() => setTaskChatRemote(null)}
             />
 
-            <TaskDeliverablesSection taskId={selected.id} currentUserId={meId} />
-
             {selected.dependenciesPredecessors?.length ? (
               <div>
                 <p className="text-xs text-gray-500">前置任务</p>
@@ -1616,26 +1419,7 @@ export function ProjectWorkspace({
                 </ul>
               </div>
             ) : null}
-            <div className="space-y-3 border-t border-gray-200 pt-4">
-              {detailSaveFeedback ?
-                <p
-                  role="status"
-                  className="text-center text-xs font-medium text-green-700"
-                >
-                  {detailSaveFeedback}
-                </p>
-              : null}
-              <button
-                type="button"
-                disabled={detailSaving}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
-                onClick={() => void saveTaskDetailDraft()}
-              >
-                {detailSaving ?
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                : <Save className="h-4 w-4 shrink-0" aria-hidden />}
-                保存更改
-              </button>
+            <div className="border-t border-gray-200 pt-4">
               <button
                 type="button"
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-medium text-red-800 hover:bg-red-100"
@@ -1665,12 +1449,17 @@ export function ProjectWorkspace({
         onRequestError={(msg) => setSaveError(msg)}
       />
 
-      <PeerContactModal
-        open={contactUser !== null}
-        onClose={() => setContactUser(null)}
-        user={contactUser}
-        orgId={orgId}
+      <DirectChatDrawer
+        open={dmOpen}
+        onClose={() => {
+          setDmOpen(false);
+          setDmPeer(null);
+        }}
         projectId={projectId}
+        peer={dmPeer}
+        currentUserId={meId}
+        dmPush={dmPush}
+        onDmPushConsumed={clearDmPush}
       />
     </div>
   );

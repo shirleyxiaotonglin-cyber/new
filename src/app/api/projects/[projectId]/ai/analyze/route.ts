@@ -13,21 +13,6 @@ import {
   openRouterComplete,
 } from "@/lib/openrouter";
 import { broadcastProjectSync } from "@/lib/project-realtime";
-import { coerceAnalyzeOutput, parseLenientJson } from "@/lib/analyze-task-json";
-
-/**
- * Vercel Pro 等可调高；Hobby 仍可能被平台限制在约 10s（见文档）。
- * 之前设为 10 + 8s 中止，慢模型（如 DeepSeek）极易误判为超时并只返回示例任务。
- */
-export const maxDuration = 60;
-
-/** 等待 OpenRouter 首包完成的最长时间；可用环境变量覆盖（毫秒） */
-function getOpenRouterAnalyzeTimeoutMs(): number {
-  const raw = process.env.OPENROUTER_ANALYZE_TIMEOUT_MS?.trim();
-  const n = raw ? Number.parseInt(raw, 10) : NaN;
-  if (Number.isFinite(n) && n >= 5_000 && n <= 120_000) return n;
-  return 45_000;
-}
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
@@ -68,27 +53,6 @@ const ParsedTaskSchema = z.object({
 const OutputSchema = z.object({
   tasks: z.array(ParsedTaskSchema).max(40),
 });
-
-/** 将模型输出的 JSON 文本转为结构化任务；失败返回 null（便于触发第二次模型请求） */
-function tryParseStructured(rawJson: string): z.infer<typeof OutputSchema> | null {
-  try {
-    const obj = parseLenientJson(rawJson);
-    const coerced = coerceAnalyzeOutput(obj);
-    const out = OutputSchema.safeParse(coerced);
-    if (!out.success) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("[ai/analyze] Zod 校验失败:", out.error.flatten());
-      }
-      return null;
-    }
-    return out.data;
-  } catch (parseErr: unknown) {
-    if (process.env.NODE_ENV === "development") {
-      console.error("[ai/analyze] JSON 解析失败:", parseErr, rawJson.slice(0, 600));
-    }
-    return null;
-  }
-}
 
 type ProjectMemberRow = { userId: string; name: string; email: string };
 
@@ -234,114 +198,28 @@ function resolveAssistantUserIds(
   return ids;
 }
 
-type PreviewRow = {
-  title: string;
-  description: string | null;
-  priority: string;
-  status: string;
-  dueDate: string | null;
-  startDate: string | null;
-  progress: number | null;
-  assigneeName: string | null;
-  assignee: { id: string; name: string } | null;
-  assigneeUnresolved: boolean;
-  assistants: { id: string; name: string }[];
-};
-
-/** OpenRouter 不可用时的示例任务，保证前端表格可渲染 */
-function buildMockPreviewRows(): PreviewRow[] {
-  return [
-    {
-      title: "示例任务1",
-      description: null,
-      priority: TaskPriority.P2,
-      status: TaskStatus.TODO,
-      dueDate: null,
-      startDate: null,
-      progress: null,
-      assigneeName: null,
-      assignee: null,
-      assigneeUnresolved: false,
-      assistants: [],
-    },
-    {
-      title: "示例任务2",
-      description: null,
-      priority: TaskPriority.P2,
-      status: TaskStatus.TODO,
-      dueDate: null,
-      startDate: null,
-      progress: null,
-      assigneeName: null,
-      assignee: null,
-      assigneeUnresolved: false,
-      assistants: [],
-    },
-  ];
-}
-
-function isLikelyAbortTimeout(e: unknown): boolean {
-  if (e instanceof Error && e.name === "AbortError") return true;
-  const msg = e instanceof Error ? e.message : String(e);
-  return /abort|aborted|超时/i.test(msg);
-}
-
-function openRouterFailureMessage(e: unknown): string {
-  const code =
-    e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
-  if (code === "MISSING_API_KEY") {
-    return "未配置智能服务密钥（OPENROUTER_API_KEY），请联系管理员。";
-  }
-  if (code === "PARSE_ERROR") {
-    return "智能服务未返回可用正文（可能为空），请稍后重试或缩短输入。";
-  }
-  if (code === "FETCH_FAILED") {
-    if (isLikelyAbortTimeout(e)) {
-      return "等待智能服务响应超时（模型较慢或单次推理耗时长）。请缩短输入、稍后重试；若部署在限制较严的环境，请联系管理员调高函数时限或换更快模型。";
-    }
-    return "无法连接智能服务或网络异常，请稍后重试。";
-  }
-  if (isOpenRouterHttpError(e)) {
-    return e.httpStatus === 403 ?
-        "内容未能通过智能服务校验，请修改表述后重试。"
-      : "智能服务返回错误，请稍后重试。";
-  }
-  return "智能解析失败，请稍后重试或简化输入内容。";
-}
-
 export async function POST(req: Request, ctx: Ctx) {
   const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ success: false, error: "未登录" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { projectId } = await ctx.params;
   const access = await requireProjectAccess(projectId, session.sub);
-  if (!access) {
-    return NextResponse.json({ success: false, error: "无权访问该项目" }, { status: 403 });
-  }
+  if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let json: unknown;
   try {
     json = await req.json();
   } catch {
-    return NextResponse.json({ success: false, error: "请求体不是合法 JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
   const parsedBody = Body.safeParse(json);
   if (!parsedBody.success) {
-    return NextResponse.json({ success: false, error: "参数无效", details: parsedBody.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: parsedBody.error.flatten() }, { status: 400 });
   }
 
   const apply = parsedBody.data.apply === true;
   if (apply && !canEditTask(access.orgMember.role, access.projectMember.role)) {
-    return NextResponse.json({ success: false, error: "无权写入任务" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-
-  const inputText = parsedBody.data.text.slice(0, 32000);
-  console.log("[ai/analyze] 输入文本长度:", inputText.length);
-  console.log(
-    "[ai/analyze] OPENROUTER_MODEL（请求前）:",
-    process.env.OPENROUTER_MODEL?.trim() || "(未设置，服务端默认 openai/gpt-4o-mini)",
-  );
 
   const memberRows = await prisma.projectMember.findMany({
     where: { projectId },
@@ -357,90 +235,71 @@ export async function POST(req: Request, ctx: Ctx) {
   const todayISO = format(new Date(), "yyyy-MM-dd");
   const systemPrompt = buildSystemPrompt(todayISO, memberLines);
 
-  const chatMessages: { role: "system" | "user"; content: string }[] = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: inputText },
-  ];
-
-  let structured: z.infer<typeof OutputSchema> | null = null;
-
+  let rawJson: string;
   try {
-    if (!process.env.OPENROUTER_API_KEY?.trim()) {
-      console.log("[ai/analyze] 错误: OPENROUTER_API_KEY 未设置");
-      return NextResponse.json(
-        {
-          success: false,
-          error: openRouterFailureMessage({ code: "MISSING_API_KEY" }),
-          tasks: buildMockPreviewRows(),
-          fallback: true,
-        },
-        { status: 200 },
-      );
-    }
-
-    const analyzeWaitMs = getOpenRouterAnalyzeTimeoutMs();
-    console.log("[ai/analyze] OpenRouter 等待上限 ms:", analyzeWaitMs);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), analyzeWaitMs);
-
-    try {
-      const { content, rawModel } = await openRouterComplete(chatMessages, {
-        temperature: 0.25,
-        maxTokens: 4096,
-        skipRefusal: true,
-        signal: controller.signal,
-      });
-      console.log(
-        "[ai/analyze] 本次 API 实际使用的模型（响应里 model 字段，应与 OPENROUTER 控制台 slug 一致）:",
-        rawModel,
-      );
-      console.log(
-        "[ai/analyze] OpenRouter 返回内容长度:",
-        content.length,
-        "前 400 字:",
-        content.slice(0, 400),
-      );
-      structured = tryParseStructured(extractJsonObject(content));
-    } catch (e: unknown) {
-      const msg = openRouterFailureMessage(e);
-      console.error("[ai/analyze] OpenRouter 请求或解析失败:", e);
-      return NextResponse.json(
-        {
-          success: false,
-          error: msg,
-          tasks: buildMockPreviewRows(),
-          fallback: true,
-        },
-        { status: 200 },
-      );
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    if (structured === null || structured.tasks.length === 0) {
-      console.log("[ai/analyze] 模型输出无法解析为任务或任务为空");
-      return NextResponse.json(
-        {
-          success: false,
-          error: "未能从文本中解析出有效任务，请换一段更清晰的描述或分段重试。",
-          tasks: buildMockPreviewRows(),
-          fallback: true,
-        },
-        { status: 200 },
-      );
-    }
-  } catch (outer: unknown) {
-    console.error("[ai/analyze] 未预期错误:", outer);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "服务内部错误，已返回示例任务供界面展示。",
-        tasks: buildMockPreviewRows(),
-        fallback: true,
-      },
-      { status: 200 },
+    const { content } = await openRouterComplete(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: parsedBody.data.text.slice(0, 32000) },
+      ],
+      { temperature: 0.25 },
     );
+    rawJson = extractJsonObject(content);
+  } catch (e: unknown) {
+    const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
+    if (code === "MISSING_API_KEY") {
+      return NextResponse.json(
+        {
+          error:
+            "未检测到 OPENROUTER_API_KEY。本地写在 .env 后重启 dev；Vercel 请在 Environment Variables 添加同名变量（Production）并 Redeploy。",
+          code: "MISSING_API_KEY",
+        },
+        { status: 503 },
+      );
+    }
+    if (isOpenRouterHttpError(e)) {
+      const forbidden = e.httpStatus === 403;
+      const modHint =
+        e.moderationReasons?.length ?
+          ` 上游标记原因：${e.moderationReasons.join("；")}`
+        : "";
+      const flagHint = e.flaggedInputSnippet ?
+        ` 相关片段（截断）：${e.flaggedInputSnippet}`
+        : "";
+      const fallbackHint =
+        "若同一模型在其它网站能通、仅本接口 403：请求是从服务器发往 OpenRouter，与浏览器直连不同（HTTP-Referer、出口 IP 都可能不一样）。请在环境变量中设置 OPENROUTER_HTTP_REFERER 或 NEXT_PUBLIC_APP_URL 为你的 https 站点根地址；或临时设 OPENROUTER_OMIT_ATTRIBUTION=1 试是否因 Referer 触发。托管平台（如 Vercel）的出口 IP 与本地不同也可能触发上游策略。亦可更换 OPENROUTER_MODEL 或设置 OPENROUTER_FALLBACK_MODEL；若属内容审核请改写输入。";
+
+      return NextResponse.json(
+        {
+          error: forbidden ? `${e.message}${modHint}${flagHint}` : e.message,
+          code: forbidden ? "OPENROUTER_FORBIDDEN" : "OPENROUTER_HTTP_ERROR",
+          ...(forbidden ? { hint: fallbackHint } : {}),
+        },
+        { status: 502 },
+      );
+    }
+
+    const msg = e instanceof Error ? e.message : "OpenRouter 调用失败";
+    return NextResponse.json({ error: msg, code: "OPENROUTER_ERROR" }, { status: 502 });
+  }
+
+  let structured: z.infer<typeof OutputSchema>;
+  try {
+    const obj = JSON.parse(rawJson) as unknown;
+    const out = OutputSchema.safeParse(obj);
+    if (!out.success) {
+      return NextResponse.json(
+        { error: "模型返回格式无法解析", detail: out.error.flatten() },
+        { status: 422 },
+      );
+    }
+    structured = out.data;
+  } catch {
+    return NextResponse.json({ error: "模型返回不是合法 JSON" }, { status: 422 });
+  }
+
+  if (structured.tasks.length === 0) {
+    return NextResponse.json({ error: "未从文本中解析出任务", tasks: [] }, { status: 400 });
   }
 
   const normalized = structured.tasks.map(normalizeParsed);
@@ -473,90 +332,71 @@ export async function POST(req: Request, ctx: Ctx) {
   }
 
   if (!apply) {
-    return NextResponse.json(
-      {
-        success: true,
-        applied: false,
-        tasks: normalized.map(toPreviewRow),
-      },
-      { status: 200 },
-    );
+    return NextResponse.json({
+      applied: false,
+      tasks: normalized.map(toPreviewRow),
+    });
   }
 
-  try {
-    const maxOrder = await prisma.task.aggregate({
-      where: { projectId },
-      _max: { sortOrder: true },
-    });
-    let order = (maxOrder._max.sortOrder ?? 0) + 1;
+  const maxOrder = await prisma.task.aggregate({
+    where: { projectId },
+    _max: { sortOrder: true },
+  });
+  let order = (maxOrder._max.sortOrder ?? 0) + 1;
 
-    const created = await prisma.$transaction(async (tx) => {
-      const out = [];
-      for (const t of normalized) {
-        const assignee = resolveMemberByName(t.assigneeName, members);
-        const assistantIds = resolveAssistantUserIds(t.assistantNames, assignee?.userId ?? null, members);
+  const created = await prisma.$transaction(async (tx) => {
+    const out = [];
+    for (const t of normalized) {
+      const assignee = resolveMemberByName(t.assigneeName, members);
+      const assistantIds = resolveAssistantUserIds(t.assistantNames, assignee?.userId ?? null, members);
 
-        const task = await tx.task.create({
-          data: {
-            projectId,
-            title: t.title,
-            description: t.description,
-            status: t.status,
-            priority: t.priority,
-            dueDate: t.dueDate ?? null,
-            startDate: t.startDate ?? null,
-            assigneeId: assignee?.userId ?? null,
-            sortOrder: order++,
-            ...(typeof t.progress === "number" ? { progress: t.progress } : {}),
-            assistants:
-              assistantIds.length > 0 ?
-                {
-                  create: assistantIds.map((userId) => ({ userId })),
-                }
-              : undefined,
-            activities: {
-              create: {
-                userId: session.sub,
-                action: ActivityAction.TASK_CREATED,
-                meta: JSON.stringify({ title: t.title, source: "openrouter_ai" }),
-              },
+      const task = await tx.task.create({
+        data: {
+          projectId,
+          title: t.title,
+          description: t.description,
+          status: t.status,
+          priority: t.priority,
+          dueDate: t.dueDate ?? null,
+          startDate: t.startDate ?? null,
+          assigneeId: assignee?.userId ?? null,
+          sortOrder: order++,
+          ...(typeof t.progress === "number" ? { progress: t.progress } : {}),
+          assistants:
+            assistantIds.length > 0 ?
+              {
+                create: assistantIds.map((userId) => ({ userId })),
+              }
+            : undefined,
+          activities: {
+            create: {
+              userId: session.sub,
+              action: ActivityAction.TASK_CREATED,
+              meta: JSON.stringify({ title: t.title, source: "openrouter_ai" }),
             },
           },
-          include: taskDetailInclude,
-        });
-        out.push(task);
-      }
-      return out;
-    });
+        },
+        include: taskDetailInclude,
+      });
+      out.push(task);
+    }
+    return out;
+  });
 
-    await writeAudit(access.project.orgId, session.sub, "task", "create_batch", {
-      projectId,
-      count: created.length,
-      source: "openrouter_ai",
-    });
+  await writeAudit(access.project.orgId, session.sub, "task", "create_batch", {
+    projectId,
+    count: created.length,
+    source: "openrouter_ai",
+  });
 
-    broadcastProjectSync(projectId, {
-      kind: "tasks_batch",
-      actorUserId: session.sub,
-    });
+  broadcastProjectSync(projectId, {
+    kind: "tasks_batch",
+    actorUserId: session.sub,
+  });
 
-    return NextResponse.json(
-      {
-        success: true,
-        applied: true,
-        count: created.length,
-        tasks: created,
-      },
-      { status: 200 },
-    );
-  } catch (dbErr: unknown) {
-    console.error("[ai/analyze] 写入数据库失败:", dbErr);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "任务写入失败，请稍后重试。",
-      },
-      { status: 200 },
-    );
-  }
+  return NextResponse.json({
+    applied: true,
+    count: created.length,
+    tasks: created,
+  });
 }
