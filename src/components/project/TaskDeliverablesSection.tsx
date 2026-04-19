@@ -377,9 +377,11 @@ export function TaskDeliverablesSection({
           accept="image/*,video/*,application/pdf,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.json,.js,.ts,.tsx,.css,.html"
           disabled={uploading}
           onChange={(e) => {
-            const f = e.target.files;
+            /** FileList 与 input 联动：若先持有引用再 `value=""`，多数浏览器里该 FileList 会变为空，导致 uploadFiles 收到 0 个文件且无任何提示 */
+            const snapshot = Array.from(e.target.files ?? []);
             e.target.value = "";
-            if (f?.length) void uploadFiles(f);
+            if (snapshot.length === 0) return;
+            void uploadFiles(snapshot);
           }}
         />
         <div className="flex flex-wrap items-center justify-center gap-2">
