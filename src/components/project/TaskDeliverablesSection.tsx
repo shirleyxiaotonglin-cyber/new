@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  CheckCircle2,
   Download,
   FileText,
   FolderOpen,
   Loader2,
   Trash2,
   Upload,
+  X,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { DeliverableCategory } from "@/lib/deliverable-helpers";
@@ -68,7 +71,12 @@ export function TaskDeliverablesSection({
   const [storageConfigured, setStorageConfigured] = useState<boolean | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  /** 仅列表 GET / 删除接口错误；勿与上传反馈混用，否则 await load() 刷新列表时会误清上传提示 */
+  const [listError, setListError] = useState<string | null>(null);
+  /** 上传结果（成功/失败）；独立于 listError，避免 load() 把它清掉 */
+  const [uploadToast, setUploadToast] = useState<{ type: "success" | "error"; message: string } | null>(
+    null,
+  );
   const [category, setCategory] = useState("");
   const [preview, setPreview] = useState<DeliverableItem | null>(null);
   const [maxUploadBytes, setMaxUploadBytes] = useState(52 * 1024 * 1024);
@@ -79,7 +87,6 @@ export function TaskDeliverablesSection({
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/tasks/${taskId}/deliverables`, {
         credentials: "include",
@@ -94,9 +101,10 @@ export function TaskDeliverablesSection({
       if (!res.ok) {
         setItems([]);
         setStorageConfigured(null);
-        setError(typeof j.error === "string" ? j.error : `加载失败（${res.status}）`);
+        setListError(typeof j.error === "string" ? j.error : `加载失败（${res.status}）`);
         return;
       }
+      setListError(null);
       setItems(Array.isArray(j.items) ? j.items : []);
       /** 仅以接口返回值为准；网络错误时不要假定「未开通存储」，否则会永久禁用上传 */
       setStorageConfigured(j.storageConfigured === true);
@@ -104,7 +112,7 @@ export function TaskDeliverablesSection({
         setMaxUploadBytes(j.maxUploadBytes);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "加载失败");
+      setListError(e instanceof Error ? e.message : "加载失败");
       setItems([]);
       setStorageConfigured(null);
     } finally {
@@ -116,27 +124,37 @@ export function TaskDeliverablesSection({
     void load();
   }, [load, reloadToken]);
 
+  /** 成功提示较短自动消失；失败提示保留更久便于复制配置说明 */
+  useEffect(() => {
+    if (!uploadToast) return;
+    const ms = uploadToast.type === "success" ? 5200 : 14000;
+    const t = window.setTimeout(() => setUploadToast(null), ms);
+    return () => window.clearTimeout(t);
+  }, [uploadToast]);
+
   async function uploadFiles(files: FileList | File[]) {
     const list = Array.from(files);
     if (list.length === 0) return;
     if (storageConfigured === false) {
-      setError(
-        "文件上传未开通：请在服务端配置 SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY，并在 Supabase 创建与 SUPABASE_STORAGE_BUCKET 一致的私有存储桶。",
-      );
+      const msg =
+        "提交失败：云存储未开通。请在服务端配置 SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY，并在 Supabase 创建与 SUPABASE_STORAGE_BUCKET 一致的私有存储桶。";
+      setUploadToast({ type: "error", message: msg });
       return;
     }
     for (const f of list) {
       if (f.size > maxUploadBytes) {
-        setError(
-          `「${f.name}」超过单文件上限（约 ${Math.floor(maxUploadBytes / 1024 / 1024)}MB），请压缩后重试。`,
-        );
+        setUploadToast({
+          type: "error",
+          message: `提交失败：「${f.name}」超过单文件上限（约 ${Math.floor(maxUploadBytes / 1024 / 1024)}MB），请压缩后重试。`,
+        });
         return;
       }
     }
     setUploading(true);
     setUploadPct(0);
-    setError(null);
+    setUploadToast(null);
     const errs: string[] = [];
+    const successes: string[] = [];
 
     try {
       for (let i = 0; i < list.length; i++) {
@@ -237,18 +255,33 @@ export function TaskDeliverablesSection({
         const doneJ = (await doneRes.json()) as { error?: string };
         if (!doneRes.ok) {
           errs.push(`${file.name}：${typeof doneJ.error === "string" ? doneJ.error : "保存记录失败"}`);
+        } else {
+          successes.push(file.name);
         }
       }
 
-      if (errs.length > 0) {
-        setError(errs.join("；"));
-      } else {
-        setError(null);
+      if (errs.length === 0 && successes.length > 0) {
+        const msg =
+          successes.length === 1 ?
+            `提交成功：「${successes[0]}」已上传`
+          : `提交成功：已上传 ${successes.length} 个文件（${successes.slice(0, 4).join("、")}${successes.length > 4 ? "…" : ""}）`;
+        setUploadToast({ type: "success", message: msg });
+      } else if (errs.length > 0 && successes.length > 0) {
+        setUploadToast({
+          type: "error",
+          message: `部分提交失败（${successes.length} 个已成功）：${errs.join("；")}`,
+        });
+      } else if (errs.length > 0) {
+        setUploadToast({ type: "error", message: `提交失败：${errs.join("；")}` });
       }
+
       await load();
       window.dispatchEvent(new CustomEvent("ph-deliverables-changed"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "上传失败");
+      setUploadToast({
+        type: "error",
+        message: `提交失败：${e instanceof Error ? e.message : "未知错误"}`,
+      });
     } finally {
       setUploading(false);
       setUploadPct(null);
@@ -257,16 +290,20 @@ export function TaskDeliverablesSection({
 
   async function remove(id: string) {
     if (!confirm("确定删除该交付物？")) return;
-    setError(null);
+    setListError(null);
     const res = await fetch(`/api/tasks/${taskId}/deliverables/${id}`, {
       method: "DELETE",
       credentials: "include",
     });
     const j = (await res.json()) as { error?: string };
     if (!res.ok) {
-      setError(typeof j.error === "string" ? j.error : "删除失败");
+      setUploadToast({
+        type: "error",
+        message: typeof j.error === "string" ? `删除失败：${j.error}` : "删除失败",
+      });
       return;
     }
+    setUploadToast({ type: "success", message: "已删除该交付物" });
     await load();
     window.dispatchEvent(new CustomEvent("ph-deliverables-changed"));
   }
@@ -276,7 +313,33 @@ export function TaskDeliverablesSection({
   const canPreviewVideo = (mime: string) => mime.startsWith("video/");
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
+    <div className="relative rounded-xl border border-gray-200 bg-gray-50/80 p-3">
+      {uploadToast ?
+        <div
+          role={uploadToast.type === "error" ? "alert" : "status"}
+          aria-live="polite"
+          className={cn(
+            "mb-3 flex gap-2 rounded-lg border px-3 py-2.5 text-xs shadow-sm",
+            uploadToast.type === "success" ?
+              "border-green-200 bg-green-50 text-green-900"
+            : "border-red-200 bg-red-50 text-red-950",
+          )}
+        >
+          {uploadToast.type === "success" ?
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
+          : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-hidden />}
+          <p className="min-w-0 flex-1 whitespace-pre-wrap leading-snug">{uploadToast.message}</p>
+          <button
+            type="button"
+            className="shrink-0 rounded p-0.5 text-gray-500 hover:bg-black/5 hover:text-gray-800"
+            aria-label="关闭提示"
+            onClick={() => setUploadToast(null)}
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+      : null}
+
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700">
         <FolderOpen className="h-4 w-4 text-red-600" aria-hidden />
         {sectionTitle}
@@ -372,8 +435,10 @@ export function TaskDeliverablesSection({
         : null}
       </div>
 
-      {error ?
-        <p className="mt-2 text-xs text-red-600">{error}</p>
+      {listError ?
+        <p className="mt-2 text-xs text-red-600" role="alert">
+          {listError}
+        </p>
       : null}
 
       {loading ?
