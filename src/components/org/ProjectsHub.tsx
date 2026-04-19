@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Copy, FolderPlus, LogIn, Rocket } from "lucide-react";
+import { Check, Copy, FolderPlus, Loader2, LogIn, Rocket, Trash2 } from "lucide-react";
 import { ProjectTemplate } from "@/lib/constants";
 import { copyTextToClipboard } from "@/lib/copy-text";
 import { cn } from "@/lib/cn";
@@ -15,6 +15,7 @@ type ProjectRow = {
   template: string;
   taskCount: number;
   updatedAt: string;
+  canDelete?: boolean;
 };
 
 export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string }) {
@@ -27,6 +28,7 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
   const [joinId, setJoinId] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [copiedProjectId, setCopiedProjectId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -109,6 +111,34 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
     }, 2000);
   }
 
+  async function deleteProject(p: ProjectRow) {
+    if (
+      !confirm(
+        `确定删除项目「${p.name}」？项目内所有任务、讨论与交付记录将一并删除，且不可恢复。`,
+      )
+    ) {
+      return;
+    }
+    setErr(null);
+    setDeletingId(p.id);
+    try {
+      const res = await fetch(`/api/projects/${p.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setErr(typeof j.error === "string" ? j.error : "删除失败");
+        return;
+      }
+      await load();
+    } catch {
+      setErr("网络异常，删除失败");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white px-4 py-6 sm:px-8">
       <header className="border-b border-gray-200 pb-6">
@@ -148,7 +178,7 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
             加入项目
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            向负责人索取项目 ID，或在本页下方「进入项目」列表中点「复制 ID」，粘贴到此处即可加入。
+            向负责人索取项目 ID，或在本页下方「我的项目」列表中点「复制 ID」，粘贴到此处即可加入。
           </p>
           <form onSubmit={joinProject} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
@@ -175,7 +205,7 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
         <section>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
             <Rocket className="h-5 w-5 text-red-600" />
-            进入项目
+            我的项目
           </h2>
           {loading ? (
             <p className="mt-4 text-gray-500">加载中…</p>
@@ -188,10 +218,7 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
                   key={p.id}
                   className="flex overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-red-200 hover:shadow"
                 >
-                  <Link
-                    href={`/org/${orgId}/project/${p.id}`}
-                    className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-4"
-                  >
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-4">
                     <div className="min-w-0">
                       <span className="font-medium text-gray-900">{p.name}</span>
                       <p className="mt-0.5 truncate font-mono text-xs text-gray-400" title={p.id}>
@@ -199,30 +226,53 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
                       </p>
                     </div>
                     <span className="shrink-0 text-sm text-gray-500">{p.taskCount} 任务</span>
-                  </Link>
-                  <button
-                    type="button"
-                    title="复制项目 ID"
-                    aria-label={`复制项目 ID：${p.name}`}
-                    onClick={() => void copyProjectId(p.id)}
-                    className={cn(
-                      "flex w-[88px] shrink-0 flex-col items-center justify-center gap-0.5 border-l border-gray-200 px-2 py-2 text-[11px] font-medium transition-colors sm:w-[100px]",
-                      copiedProjectId === p.id ?
-                        "bg-green-50 text-green-700"
-                      : "bg-gray-50/90 text-gray-600 hover:bg-red-50 hover:text-red-700",
-                    )}
-                  >
-                    {copiedProjectId === p.id ?
-                      <>
-                        <Check className="h-4 w-4 shrink-0" aria-hidden />
-                        已复制
-                      </>
-                    : <>
-                        <Copy className="h-4 w-4 shrink-0" aria-hidden />
-                        复制 ID
-                      </>
-                    }
-                  </button>
+                  </div>
+                  <div className="flex shrink-0 divide-x divide-gray-200 border-l border-gray-200 bg-red-50/40">
+                    <Link
+                      href={`/org/${orgId}/project/${p.id}`}
+                      className="inline-flex min-h-[52px] min-w-[72px] items-center justify-center px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 sm:min-w-[80px]"
+                    >
+                      进入
+                    </Link>
+                    {p.canDelete ?
+                      <button
+                        type="button"
+                        disabled={deletingId === p.id}
+                        title="删除项目"
+                        aria-label={`删除项目：${p.name}`}
+                        onClick={() => void deleteProject(p)}
+                        className="inline-flex min-h-[52px] min-w-[72px] flex-col items-center justify-center gap-0.5 px-2 py-2 text-[11px] font-medium text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50 sm:min-w-[76px]"
+                      >
+                        {deletingId === p.id ?
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        : <Trash2 className="h-4 w-4 shrink-0" aria-hidden />}
+                        删除
+                      </button>
+                    : null}
+                    <button
+                      type="button"
+                      title="复制项目 ID"
+                      aria-label={`复制项目 ID：${p.name}`}
+                      onClick={() => void copyProjectId(p.id)}
+                      className={cn(
+                        "flex min-h-[52px] min-w-[76px] flex-col items-center justify-center gap-0.5 px-2 py-2 text-[11px] font-medium transition-colors sm:min-w-[88px]",
+                        copiedProjectId === p.id ?
+                          "bg-green-50 text-green-700"
+                        : "bg-white/80 text-gray-600 hover:bg-red-50 hover:text-red-700",
+                      )}
+                    >
+                      {copiedProjectId === p.id ?
+                        <>
+                          <Check className="h-4 w-4 shrink-0" aria-hidden />
+                          已复制
+                        </>
+                      : <>
+                          <Copy className="h-4 w-4 shrink-0" aria-hidden />
+                          复制 ID
+                        </>
+                      }
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

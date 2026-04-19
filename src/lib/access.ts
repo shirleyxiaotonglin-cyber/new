@@ -40,6 +40,18 @@ export function canUploadDeliverable(orgRole: string, projectRole: string) {
   return canEditTask(orgRole, projectRole);
 }
 
+/** 删除整个项目：组织 Owner/Admin，或项目 Owner/Admin */
+export function canDeleteProject(
+  orgRole: string,
+  projectRole: string | null | undefined,
+) {
+  if (orgRole === OrgRole.OWNER || orgRole === OrgRole.ADMIN) return true;
+  if (!projectRole) return false;
+  return (
+    projectRole === ProjectMemberRole.OWNER || projectRole === ProjectMemberRole.ADMIN
+  );
+}
+
 /** 删除：本人可删自己的；项目负责人/管理员可删任意 */
 export function canDeleteDeliverable(
   orgRole: string,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireOrgMember } from "@/lib/access";
+import { canDeleteProject, requireOrgMember } from "@/lib/access";
 import {
   ProjectStatus,
   ProjectTemplate,
@@ -25,6 +25,7 @@ export async function GET(_req: Request, ctx: Ctx) {
     orderBy: { updatedAt: "desc" },
     include: {
       _count: { select: { tasks: true } },
+      members: { where: { userId: session.sub }, select: { role: true } },
     },
   });
   return NextResponse.json({
@@ -35,6 +36,7 @@ export async function GET(_req: Request, ctx: Ctx) {
       template: p.template,
       taskCount: p._count.tasks,
       updatedAt: p.updatedAt,
+      canDelete: canDeleteProject(m.role, p.members[0]?.role),
     })),
   });
 }

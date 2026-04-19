@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireProjectAccess } from "@/lib/access";
+import { canDeleteProject, requireProjectAccess } from "@/lib/access";
 import { ProjectStatus } from "@/lib/constants";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
@@ -75,4 +75,26 @@ export async function PATCH(req: Request, ctx: Ctx) {
     actorUserId: session.sub,
   });
   return NextResponse.json({ project: updated });
+}
+
+export async function DELETE(_req: Request, ctx: Ctx) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { projectId } = await ctx.params;
+  const access = await requireProjectAccess(projectId, session.sub);
+  if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  if (
+    !canDeleteProject(access.orgMember.role, access.projectMember.role)
+  ) {
+    return NextResponse.json(
+      { error: "仅组织管理员或项目负责人/项目管理员可删除项目" },
+      { status: 403 },
+    );
+  }
+
+  const orgId = access.project.orgId;
+  await prisma.project.delete({ where: { id: projectId } });
+  await writeAudit(orgId, session.sub, "project", "delete", { projectId });
+  return NextResponse.json({ ok: true });
 }
