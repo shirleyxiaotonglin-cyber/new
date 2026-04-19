@@ -102,10 +102,9 @@ export function ProjectsHub({
       setErr((j as { error?: string }).error?.toString() ?? "加入失败");
       return;
     }
-    const jid = (j as { projectId?: string; orgId?: string }).projectId;
-    const jOrg = (j as { orgId?: string }).orgId;
+    const jid = (j as { projectId?: string }).projectId;
     setJoinId("");
-    if (jid && jOrg) router.push(`/org/${jOrg}/project/${jid}`);
+    if (jid) router.push(`/org/${workspaceOrgId}/project/${jid}`);
     else void load();
   }
 

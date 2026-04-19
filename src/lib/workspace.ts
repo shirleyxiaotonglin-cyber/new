@@ -13,6 +13,18 @@ export async function getPrimaryOrgMembership(userId: string) {
   });
 }
 
+/**
+ * `/org/:orgId/project/:projectId` 中的 orgId 允许为项目所属业务组织，或当前用户唯一工作空间（主组织）。
+ * 这样在主空间「加入项目」后可留在自己的 org 路径下打开协作项目。
+ */
+export function projectRouteOrgMatches(
+  routeOrgId: string,
+  projectOrgId: string,
+  primaryOrgId: string,
+): boolean {
+  return routeOrgId === projectOrgId || routeOrgId === primaryOrgId;
+}
+
 /** 用户在指定组织下是否已有任一项目的成员身份（不含组织成员也可协作项目） */
 export async function hasProjectMembershipInOrg(orgId: string, userId: string): Promise<boolean> {
   const n = await prisma.projectMember.count({
