@@ -1149,10 +1149,10 @@ export function ProjectWorkspace({
         )}
       </main>
 
-      {/* 任务侧栏 */}
+      {/* 任务侧栏：flex 列 + min-h-0 才能让内部 overflow-y-auto 真正出现滚动条 */}
       {selected && (
-        <div className="fixed bottom-0 right-0 top-0 z-40 w-full max-w-md border-l border-gray-200 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-gray-200 bg-red-600 px-4 py-3 text-white">
+        <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-gray-200 bg-white shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-red-600 px-4 py-3 text-white">
             <h2 className="text-sm font-semibold">任务详情</h2>
             <button
               type="button"
@@ -1162,7 +1162,22 @@ export function ProjectWorkspace({
               关闭
             </button>
           </div>
-          <div className="space-y-4 overflow-y-auto p-4 pb-24 text-sm text-gray-800">
+          {saveError ?
+            <div
+              role="alert"
+              className="flex shrink-0 items-start justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-950"
+            >
+              <span className="min-w-0 break-words">{saveError}</span>
+              <button
+                type="button"
+                className="shrink-0 font-medium text-amber-900 underline hover:text-amber-950"
+                onClick={() => setSaveError(null)}
+              >
+                关闭
+              </button>
+            </div>
+          : null}
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-y-contain p-4 pb-8 text-sm text-gray-800">
             <div>
               <label className="text-xs font-medium text-gray-500">任务名称</label>
               <input
