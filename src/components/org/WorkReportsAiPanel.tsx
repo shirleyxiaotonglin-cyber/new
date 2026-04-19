@@ -12,6 +12,7 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
+import { cn } from "@/lib/cn";
 
 type ReportData = {
   reportTitle?: string;
@@ -97,53 +98,28 @@ export function WorkReportsAiPanel({
   return (
     <section className="mt-10 space-y-8">
       <div className="rounded-2xl border border-gray-200 bg-gradient-to-b from-slate-50 to-white px-4 py-6 shadow-sm sm:px-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-              <Sparkles className="h-5 w-5 text-red-600" aria-hidden />
-              AI 工作报告（OpenRouter）
-            </h2>
-            <p className="mt-1 max-w-2xl text-sm text-gray-600">
-              基于当前组织内「分配给你」的任务数据，自动分析进度与完成情况，生成今日 / 本周 /
-              本月工作报告。需配置环境变量{" "}
-              <code className="rounded bg-gray-100 px-1 text-xs">OPENROUTER_API_KEY</code>。
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+            <Sparkles className="h-5 w-5 text-red-600" aria-hidden />
+            AI 工作报告（OpenRouter）
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm text-gray-600">
+            基于当前组织内「分配给你」的任务数据，自动分析进度与完成情况，生成今日 / 本周 /
+            本月工作报告。需配置环境变量{" "}
+            <code className="rounded bg-gray-100 px-1 text-xs">OPENROUTER_API_KEY</code>。
+            在下方各报告卡**标题旁**点击对应按钮即可生成。
+          </p>
+          {aiStatus ? (
+            <p className="mt-2 text-xs text-gray-500">
+              {aiStatus.configured ?
+                <>
+                  已就绪 · 模型 <span className="font-mono text-gray-700">{aiStatus.model}</span>
+                </>
+              : "未检测到 API Key，各卡内生成按钮将不可用。"}
             </p>
-            {aiStatus ? (
-              <p className="mt-2 text-xs text-gray-500">
-                {aiStatus.configured ?
-                  <>
-                    已就绪 · 模型 <span className="font-mono text-gray-700">{aiStatus.model}</span>
-                  </>
-                : "未检测到 API Key，生成按钮将不可用。"}
-              </p>
-            ) : (
-              <p className="mt-2 text-xs text-gray-400">正在检测配置…</p>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <GenButton
-              label="今日工作报告"
-              icon={<CalendarDays className="h-4 w-4" />}
-              loading={loadingScope === "today"}
-              disabled={loadingScope !== null || aiStatus?.configured === false}
-              onClick={() => void generate("today")}
-              primary
-            />
-            <GenButton
-              label="本周工作报告"
-              icon={<FileText className="h-4 w-4" />}
-              loading={loadingScope === "week"}
-              disabled={loadingScope !== null || aiStatus?.configured === false}
-              onClick={() => void generate("week")}
-            />
-            <GenButton
-              label="本月工作报告"
-              icon={<CalendarRange className="h-4 w-4" />}
-              loading={loadingScope === "month"}
-              disabled={loadingScope !== null || aiStatus?.configured === false}
-              onClick={() => void generate("month")}
-            />
-          </div>
+          ) : (
+            <p className="mt-2 text-xs text-gray-400">正在检测配置…</p>
+          )}
         </div>
 
         {error ? (
@@ -157,20 +133,51 @@ export function WorkReportsAiPanel({
         <ReportCard
           title="今日工作报告"
           report={todayReport}
-          emptyHint="点击「今日工作报告」生成"
+          emptyHint="在标题旁点击「今日工作报告」生成"
           taskProjectHrefByTaskId={taskProjectHrefByTaskId}
+          genAction={
+            <GenButton
+              label="今日工作报告"
+              icon={<CalendarDays className="h-4 w-4" />}
+              loading={loadingScope === "today"}
+              disabled={loadingScope !== null || aiStatus?.configured === false}
+              onClick={() => void generate("today")}
+              primary
+              compact
+            />
+          }
         />
         <ReportCard
           title="本周工作报告"
           report={weekReport}
-          emptyHint="点击「本周工作报告」生成"
+          emptyHint="在标题旁点击「本周工作报告」生成"
           taskProjectHrefByTaskId={taskProjectHrefByTaskId}
+          genAction={
+            <GenButton
+              label="本周工作报告"
+              icon={<FileText className="h-4 w-4" />}
+              loading={loadingScope === "week"}
+              disabled={loadingScope !== null || aiStatus?.configured === false}
+              onClick={() => void generate("week")}
+              compact
+            />
+          }
         />
         <ReportCard
           title="本月工作报告"
           report={monthReport}
-          emptyHint="点击「本月工作报告」生成"
+          emptyHint="在标题旁点击「本月工作报告」生成"
           taskProjectHrefByTaskId={taskProjectHrefByTaskId}
+          genAction={
+            <GenButton
+              label="本月工作报告"
+              icon={<CalendarRange className="h-4 w-4" />}
+              loading={loadingScope === "month"}
+              disabled={loadingScope !== null || aiStatus?.configured === false}
+              onClick={() => void generate("month")}
+              compact
+            />
+          }
         />
       </div>
     </section>
@@ -184,6 +191,7 @@ function GenButton({
   disabled,
   onClick,
   primary,
+  compact,
 }: {
   label: string;
   icon: ReactNode;
@@ -191,7 +199,10 @@ function GenButton({
   disabled: boolean;
   onClick: () => void;
   primary?: boolean;
+  /** 卡片标题栏内紧凑样式 */
+  compact?: boolean;
 }) {
+  const pad = compact ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm";
   return (
     <button
       type="button"
@@ -199,12 +210,20 @@ function GenButton({
       onClick={onClick}
       className={
         primary ?
-          "inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
-        : "inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+          cn(
+            "inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50",
+            pad,
+          )
+        : cn(
+            "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50",
+            pad,
+          )
       }
     >
-      {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : icon}
-      {label}
+      {loading ?
+        <Loader2 className={compact ? "h-3.5 w-3.5 animate-spin" : "h-4 w-4 animate-spin"} aria-hidden />
+      : icon}
+      <span className="max-w-[10rem] truncate sm:max-w-none">{label}</span>
     </button>
   );
 }
@@ -214,16 +233,21 @@ function ReportCard({
   report,
   emptyHint,
   taskProjectHrefByTaskId,
+  genAction,
 }: {
   title: string;
   report: ReportData | null;
   emptyHint: string;
   taskProjectHrefByTaskId: Record<string, string>;
+  genAction: ReactNode;
 }) {
   return (
     <article className="flex flex-col rounded-2xl border border-gray-200 bg-white shadow-sm">
       <div className="border-b border-gray-100 px-4 py-3">
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+        <div className="flex flex-col gap-3 min-[380px]:flex-row min-[380px]:items-center min-[380px]:justify-between">
+          <h3 className="min-w-0 shrink text-sm font-semibold leading-snug text-gray-900">{title}</h3>
+          <div className="flex shrink-0 justify-end">{genAction}</div>
+        </div>
       </div>
       <div className="flex min-h-[280px] flex-1 flex-col p-4">
         {!report ? (
