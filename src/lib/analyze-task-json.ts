@@ -78,27 +78,28 @@ function coerceTaskRaw(raw: unknown): Record<string, unknown> | null {
     : "";
   if (!title) return null;
 
-  const out: Record<string, unknown> = { ...o, title: title.slice(0, 500) };
+  /** 禁止 `{ ...o }`：模型常返回字符串天数、布尔 progress 等，会把 Zod 校验顶爆 */
+  const out: Record<string, unknown> = {
+    title: title.slice(0, 500),
+    priority: normalizePriorityValue(o.priority),
+    status: normalizeStatusValue(o.status),
+  };
 
-  if (typeof o.description === "number") {
-    out.description = String(o.description);
-  } else if (o.description !== undefined && o.description !== null && typeof o.description !== "string") {
-    out.description = String(o.description).slice(0, 8000);
+  if (o.description !== undefined && o.description !== null) {
+    out.description =
+      typeof o.description === "string" ?
+        o.description.slice(0, 8000)
+      : String(o.description).slice(0, 8000);
   }
 
-  out.priority = normalizePriorityValue(o.priority);
-  out.status = normalizeStatusValue(o.status);
-
-  let dueIn = coerceNumericField(o.dueInDays);
+  const dueIn = coerceNumericField(o.dueInDays);
   if (typeof dueIn === "number") {
-    dueIn = Math.min(3650, Math.max(0, Math.round(dueIn)));
-    out.dueInDays = dueIn;
+    out.dueInDays = Math.min(3650, Math.max(0, Math.round(dueIn)));
   }
 
-  let startIn = coerceNumericField(o.startInDays);
+  const startIn = coerceNumericField(o.startInDays);
   if (typeof startIn === "number") {
-    startIn = Math.min(3650, Math.max(0, Math.round(startIn)));
-    out.startInDays = startIn;
+    out.startInDays = Math.min(3650, Math.max(0, Math.round(startIn)));
   }
 
   const progRaw = coerceNumericField(o.progress);
@@ -106,8 +107,18 @@ function coerceTaskRaw(raw: unknown): Record<string, unknown> | null {
     out.progress = Math.min(100, Math.max(0, Math.round(progRaw)));
   }
 
-  out.dueDateISO = normalizeDateField(o.dueDateISO);
-  out.startDateISO = normalizeDateField(o.startDateISO);
+  const dueIso = normalizeDateField(o.dueDateISO);
+  if (dueIso !== undefined) out.dueDateISO = dueIso;
+
+  const startIso = normalizeDateField(o.startDateISO);
+  if (startIso !== undefined) out.startDateISO = startIso;
+
+  if (o.assigneeName !== undefined && o.assigneeName !== null) {
+    const s = typeof o.assigneeName === "string" ? o.assigneeName.trim() : String(o.assigneeName).trim();
+    out.assigneeName = s ? s.slice(0, 120) : null;
+  } else {
+    out.assigneeName = null;
+  }
 
   if (typeof o.assistantNames === "string") {
     out.assistantNames = o.assistantNames
@@ -120,10 +131,8 @@ function coerceTaskRaw(raw: unknown): Record<string, unknown> | null {
       .map((x) => (typeof x === "string" ? x.trim() : String(x)))
       .filter(Boolean)
       .slice(0, 8);
-  }
-
-  if (o.assigneeName !== undefined && o.assigneeName !== null && typeof o.assigneeName !== "string") {
-    out.assigneeName = String(o.assigneeName).trim() || null;
+  } else {
+    out.assistantNames = [];
   }
 
   return out;

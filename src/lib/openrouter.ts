@@ -242,6 +242,12 @@ export async function openRouterComplete(
 export function extractJsonObject(text: string): string {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const inner = fence?.[1]?.trim() ?? text.trim();
+  try {
+    JSON.parse(inner);
+    return inner;
+  } catch {
+    /* 继续从文中截取对象或数组 */
+  }
   if (inner.startsWith("[")) {
     const a0 = inner.indexOf("[");
     const a1 = inner.lastIndexOf("]");

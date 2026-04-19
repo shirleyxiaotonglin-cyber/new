@@ -253,6 +253,9 @@ export async function POST(req: Request, ctx: Ctx) {
     rawJson = extractJsonObject(content);
   } catch (e: unknown) {
     const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
+    if (process.env.NODE_ENV === "development") {
+      console.error("[ai/analyze] OpenRouter / 网络层失败:", code || "(no code)", e);
+    }
     if (code === "PARSE_ERROR") {
       return NextResponse.json(
         { error: AI_TASK_PARSE_USER_MESSAGE, code: "PARSE_ERROR" },
@@ -299,6 +302,9 @@ export async function POST(req: Request, ctx: Ctx) {
     const coerced = coerceAnalyzeOutput(obj);
     const out = OutputSchema.safeParse(coerced);
     if (!out.success) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("[ai/analyze] Zod 校验失败（coerce 后仍不通过）:", out.error.flatten());
+      }
       return NextResponse.json(
         {
           error: AI_TASK_PARSE_USER_MESSAGE,
@@ -308,7 +314,10 @@ export async function POST(req: Request, ctx: Ctx) {
       );
     }
     structured = out.data;
-  } catch {
+  } catch (parseErr: unknown) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("[ai/analyze] JSON 解析失败:", parseErr, "rawJson 前 500 字:", rawJson.slice(0, 500));
+    }
     return NextResponse.json(
       { error: AI_TASK_PARSE_USER_MESSAGE, code: "JSON_SYNTAX" },
       { status: 422 },
