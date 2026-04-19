@@ -270,6 +270,8 @@ export function ProjectWorkspace({
   const [assistEmailDraft, setAssistEmailDraft] = useState("");
   /** 重置「添加协助人」下拉，便于连续添加后回到占位项 */
   const [assistMemberSelectKey, setAssistMemberSelectKey] = useState(0);
+  /** 侧栏内除标题/正文外的交互（下拉、日期等已多数实时落库；用于点亮「保存修改」） */
+  const [taskSidebarDirty, setTaskSidebarDirty] = useState(false);
   const [dragging, setDragging] = useState<TaskRow | null>(null);
   const [aiText, setAiText] = useState("");
   /** OpenRouter 解析后的预览（尚未写入数据库） */
@@ -372,6 +374,15 @@ export function ProjectWorkspace({
     const t1 = (selected.title ?? "").trim();
     return t0 !== t1 || d !== s;
   }, [selected, draftTitle, draftDesc]);
+
+  const detailDirty = useMemo(
+    () =>
+      textDirty ||
+      assigneeEmailDraft.trim().length > 0 ||
+      assistEmailDraft.trim().length > 0 ||
+      taskSidebarDirty,
+    [textDirty, assigneeEmailDraft, assistEmailDraft, taskSidebarDirty],
+  );
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
@@ -521,6 +532,10 @@ export function ProjectWorkspace({
   }, [selectedId]);
 
   useEffect(() => {
+    setTaskSidebarDirty(false);
+  }, [selectedId]);
+
+  useEffect(() => {
     if (loading || loadError) return;
     const tid = taskFromUrl?.trim();
     if (!tid) return;
@@ -633,17 +648,40 @@ export function ProjectWorkspace({
       setSaveError("任务名称不能为空");
       return;
     }
-    if (!textDirty) {
-      setSaveError("标题与任务内容相对服务器未改动，无需保存；修改后再点此按钮。");
+    if (!detailDirty) {
+      setSaveError("任务详情暂无未保存或未应用的改动。");
       return;
     }
     setSavingText(true);
-    const ok = await patchTask(selected.id, {
-      title,
-      description: draftDesc.trim() ? draftDesc : null,
-    });
-    setSavingText(false);
-    if (ok) setSaveError(null);
+    setSaveError(null);
+    try {
+      if (textDirty) {
+        const ok = await patchTask(selected.id, {
+          title,
+          description: draftDesc.trim() ? draftDesc : null,
+        });
+        if (!ok) return;
+      }
+      if (assigneeEmailDraft.trim()) {
+        const ok = await patchTask(selected.id, {
+          assigneeEmail: assigneeEmailDraft.trim(),
+        });
+        if (!ok) return;
+        setAssigneeEmailDraft("");
+      }
+      if (assistEmailDraft.trim()) {
+        const currentIds = (selected.assistants ?? []).map((a) => a.user.id);
+        const ok = await patchTask(selected.id, {
+          assistantIds: currentIds,
+          assistantEmails: [assistEmailDraft.trim()],
+        });
+        if (!ok) return;
+        setAssistEmailDraft("");
+      }
+      setTaskSidebarDirty(false);
+    } finally {
+      setSavingText(false);
+    }
   }
 
   async function applyAssigneeByEmail() {
@@ -1284,18 +1322,18 @@ export function ProjectWorkspace({
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                disabled={savingText}
+                disabled={savingText || !detailDirty}
                 title={
                   savingText ?
                     "保存中…"
-                  : textDirty ?
-                    "保存任务名称与任务内容"
-                  : "当前与服务器一致；修改标题或任务内容后即可保存"
+                  : detailDirty ?
+                    "保存标题、正文、待应用的邮箱，并确认本侧栏其它改动"
+                  : "当前无待保存项；修改任务详情任意处后可点此"
                 }
                 onClick={() => void saveTaskFields()}
                 className={cn(
                   "rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm hover:bg-red-50",
-                  savingText && "cursor-not-allowed opacity-50",
+                  (savingText || !detailDirty) && "cursor-not-allowed opacity-50",
                 )}
               >
                 {savingText ? "保存中…" : "保存修改"}
@@ -1352,9 +1390,9 @@ export function ProjectWorkspace({
                 onChange={(e) => setDraftDesc(e.target.value)}
               />
             </div>
-            {textDirty ?
+            {detailDirty ?
               <p className="text-xs text-amber-700">
-                标题或任务内容已修改，请点击右上角「保存修改」写入服务器。
+                任务详情有改动（含标题、正文、下方选项或待应用的邮箱），可点击右上角「保存修改」同步。
               </p>
             : null}
 
@@ -1384,6 +1422,7 @@ export function ProjectWorkspace({
                 value={selected.assignee?.id ?? ""}
                 onChange={(e) => {
                   const v = e.target.value;
+                  setTaskSidebarDirty(true);
                   void patchTask(selected.id, { assigneeId: v.length > 0 ? v : null });
                 }}
               >
@@ -1442,6 +1481,7 @@ export function ProjectWorkspace({
                     return;
                   }
                   aid.add(uid);
+                  setTaskSidebarDirty(true);
                   void patchTask(selected.id, { assistantIds: Array.from(aid) }).then(() => {
                     setAssistMemberSelectKey((k) => k + 1);
                   });
@@ -1484,6 +1524,7 @@ export function ProjectWorkspace({
                               const next = new Set(aid);
                               if (checked) next.delete(m.user.id);
                               else next.add(m.user.id);
+                              setTaskSidebarDirty(true);
                               void patchTask(selected.id, {
                                 assistantIds: Array.from(next),
                               });
@@ -1537,7 +1578,10 @@ export function ProjectWorkspace({
               <select
                 className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 value={selected.status}
-                onChange={(e) => void patchTask(selected.id, { status: e.target.value })}
+                onChange={(e) => {
+                  setTaskSidebarDirty(true);
+                  void patchTask(selected.id, { status: e.target.value });
+                }}
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -1558,6 +1602,7 @@ export function ProjectWorkspace({
                 }
                 onChange={(e) => {
                   const v = e.target.value;
+                  setTaskSidebarDirty(true);
                   void patchTask(selected.id, {
                     startDate: v
                       ? new Date(`${v}T00:00:00`).toISOString()
@@ -1576,6 +1621,7 @@ export function ProjectWorkspace({
                 }
                 onChange={(e) => {
                   const v = e.target.value;
+                  setTaskSidebarDirty(true);
                   void patchTask(selected.id, {
                     dueDate: v ? new Date(`${v}T00:00:00`).toISOString() : null,
                   });
@@ -1587,7 +1633,10 @@ export function ProjectWorkspace({
               <select
                 className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 value={selected.priority}
-                onChange={(e) => void patchTask(selected.id, { priority: e.target.value })}
+                onChange={(e) => {
+                  setTaskSidebarDirty(true);
+                  void patchTask(selected.id, { priority: e.target.value });
+                }}
               >
                 {Object.values(TaskPriority).map((p) => (
                   <option key={p} value={p}>
@@ -1609,6 +1658,7 @@ export function ProjectWorkspace({
                 value={selected.progress ?? 0}
                 onChange={(e) => {
                   const n = Number(e.target.value);
+                  setTaskSidebarDirty(true);
                   void patchTask(selected.id, { progress: n });
                   setSelected((s) => (s ? { ...s, progress: n } : s));
                 }}
