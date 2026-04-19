@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -269,6 +269,19 @@ export function ProjectWorkspace({
   defaultView?: View;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const taskFromUrl = searchParams.get("task");
+
+  const clearTaskFromUrl = useCallback(() => {
+    if (!searchParams.get("task")) return;
+    router.replace(`/org/${orgId}/project/${projectId}`, { scroll: false });
+  }, [searchParams, router, orgId, projectId]);
+
+  const closeTaskSidebar = useCallback(() => {
+    setSelected(null);
+    clearTaskFromUrl();
+  }, [clearTaskFromUrl]);
+
   const [view, setView] = useState<View>(defaultView);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [projectName, setProjectName] = useState("");
@@ -466,6 +479,14 @@ export function ProjectWorkspace({
     });
   }, [tasks]);
 
+  /** 从「我的任务」等入口：?task=id 打开右侧详情 */
+  useEffect(() => {
+    if (loading || loadError || tasks.length === 0) return;
+    if (!taskFromUrl) return;
+    const match = tasks.find((x) => x.id === taskFromUrl);
+    if (match) setSelected(match);
+  }, [taskFromUrl, loading, loadError, tasks]);
+
   useEffect(() => {
     setDetailSaveFeedback(null);
   }, [selected?.id]);
@@ -512,6 +533,7 @@ export function ProjectWorkspace({
       }
       setSaveError(null);
       setSelected(null);
+      clearTaskFromUrl();
       await load({ silent: true });
       return true;
     } catch {
@@ -1228,7 +1250,7 @@ export function ProjectWorkspace({
               <button
                 type="button"
                 className="text-red-100 hover:text-white"
-                onClick={() => setSelected(null)}
+                onClick={closeTaskSidebar}
               >
                 关闭
               </button>

@@ -1,7 +1,16 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { requireProjectAccess } from "@/lib/access";
 import { ProjectWorkspace } from "@/components/project/ProjectWorkspace";
+
+function ProjectLoading() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-500">
+      加载项目…
+    </div>
+  );
+}
 
 export default async function ProjectPage({
   params,
@@ -14,13 +23,16 @@ export default async function ProjectPage({
   const access = await requireProjectAccess(projectId, session.sub);
   if (!access || access.project.orgId !== orgId) redirect("/login");
 
-  /* key 强制在切换项目/组织时重置客户端状态，避免沿用上一个项目的任务/侧栏数据 */
+  /* key 强制在切换项目/组织时重置客户端状态，避免沿用上一个项目的任务/侧栏数据。
+   * Suspense：ProjectWorkspace 使用 useSearchParams 解析 ?task= 深链 */
   return (
-    <ProjectWorkspace
-      key={`${orgId}:${projectId}`}
-      orgId={orgId}
-      projectId={projectId}
-      defaultView="gantt"
-    />
+    <Suspense fallback={<ProjectLoading />}>
+      <ProjectWorkspace
+        key={`${orgId}:${projectId}`}
+        orgId={orgId}
+        projectId={projectId}
+        defaultView="gantt"
+      />
+    </Suspense>
   );
 }

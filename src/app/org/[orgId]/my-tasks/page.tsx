@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { tasksInvolvingMember } from "@/lib/my-tasks-scope";
 import { MyTasksBoard } from "@/components/org/MyTasksBoard";
 import { MyTasksPlanPanel } from "@/components/org/MyTasksPlanPanel";
 
@@ -20,11 +21,7 @@ export default async function MyTasksPage({
   if (!member) redirect("/login");
 
   const tasks = await prisma.task.findMany({
-    where: {
-      assigneeId: session.sub,
-      project: { orgId },
-      parentId: null,
-    },
+    where: tasksInvolvingMember(orgId, session.sub),
     orderBy: [{ dueDate: "asc" }],
     include: { project: { select: { id: true, name: true } } },
     take: 200,
@@ -45,7 +42,9 @@ export default async function MyTasksPage({
         <p className="text-xs font-semibold uppercase tracking-wider text-red-600">我的任务</p>
         <h1 className="mt-2 text-2xl font-semibold text-gray-900">分配给我的工作项</h1>
         <p className="mt-2 max-w-2xl text-sm text-gray-600">
-          按状态查看待办、进行中、已完成与阻塞；在「日历」中按截止日期浏览本月安排（原项目内日历已移至此处）。
+          包含<strong className="font-medium text-gray-800">分配给你</strong>的任务，以及你为
+          <strong className="font-medium text-gray-800">协助人</strong>
+          的任务。点击任务进入项目并打开详情，可填写任务内容、上传交付物等。
         </p>
       </header>
 
@@ -56,7 +55,10 @@ export default async function MyTasksPage({
       <MyTasksPlanPanel
         orgId={orgId}
         taskProjectHrefByTaskId={Object.fromEntries(
-          tasks.map((t) => [t.id, `/org/${orgId}/project/${t.projectId}`]),
+          tasks.map((t) => [
+            t.id,
+            `/org/${orgId}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`,
+          ]),
         )}
       />
     </div>

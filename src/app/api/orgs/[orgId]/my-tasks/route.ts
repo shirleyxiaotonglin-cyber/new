@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { requireOrgMember } from "@/lib/access";
+import { tasksInvolvingMember } from "@/lib/my-tasks-scope";
 
 type Ctx = { params: Promise<{ orgId: string }> };
 
@@ -13,11 +14,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   if (!m) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const tasks = await prisma.task.findMany({
-    where: {
-      assigneeId: session.sub,
-      project: { orgId },
-      parentId: null,
-    },
+    where: tasksInvolvingMember(orgId, session.sub),
     orderBy: [{ dueDate: "asc" }, { sortOrder: "asc" }],
     include: {
       project: { select: { id: true, name: true } },

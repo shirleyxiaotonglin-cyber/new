@@ -80,7 +80,7 @@ function MonthCalendar({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-600">
           按<strong className="font-medium text-gray-800">截止日期</strong>
-          落在当月格子内；点击任务进入对应项目。
+          落在当月格子内；点击任务进入项目并打开该任务详情。
         </p>
         <div className="flex items-center gap-2">
           <button
@@ -130,7 +130,7 @@ function MonthCalendar({
                   {dayTasks.map((dt) => (
                     <Link
                       key={dt.id}
-                      href={`/org/${orgId}/project/${dt.projectId}`}
+                      href={`/org/${orgId}/project/${dt.projectId}?task=${encodeURIComponent(dt.id)}`}
                       className="block truncate rounded bg-red-50 px-1 py-0.5 text-[10px] font-medium text-red-800 ring-1 ring-red-100 hover:bg-red-100"
                       title={`${dt.title} · ${dt.projectName}`}
                     >
@@ -151,7 +151,7 @@ function MonthCalendar({
             {undated.map((t) => (
               <li key={t.id}>
                 <Link
-                  href={`/org/${orgId}/project/${t.projectId}`}
+                  href={`/org/${orgId}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`}
                   className="inline-flex max-w-[220px] items-center truncate rounded-full bg-white px-2.5 py-1 text-xs text-gray-800 ring-1 ring-gray-200 hover:ring-red-200"
                   title={t.projectName}
                 >
@@ -234,7 +234,7 @@ export function MyTasksBoard({ orgId, tasks }: { orgId: string; tasks: MyTaskLis
           {filtered.map((t) => (
             <li key={t.id}>
               <Link
-                href={`/org/${orgId}/project/${t.projectId}`}
+                href={`/org/${orgId}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 px-4 py-3 transition-colors hover:border-red-200 hover:bg-red-50/30"
               >
                 <span className="font-medium text-gray-900">{t.title}</span>
