@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Camera, Loader2, Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { compressAvatarForUpload } from "@/lib/compress-avatar-client";
 
 function formatAvatarUploadError(payload: Record<string, unknown>): string {
@@ -217,8 +217,8 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
       : null}
 
       <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-        <div className="relative">
-          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-gray-200 bg-gray-100">
+        <label className="relative cursor-pointer">
+          <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-gray-200 bg-gray-100">
             {avatarUrl ?
               // eslint-disable-next-line @next/next/no-img-element
               <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
@@ -226,23 +226,23 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
                 {name.slice(0, 1).toUpperCase()}
               </span>
             }
-          </div>
-          <label className="absolute bottom-0 right-0 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-red-600 text-white shadow-md hover:bg-red-700">
             {uploading ?
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            : <Camera className="h-4 w-4" aria-hidden />}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              className="sr-only"
-              disabled={uploading}
-              onChange={onPickAvatar}
-            />
-          </label>
-        </div>
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45">
+                <Loader2 className="h-8 w-8 animate-spin text-white" aria-hidden />
+              </span>
+            : null}
+          </div>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="sr-only"
+            disabled={uploading}
+            onChange={onPickAvatar}
+          />
+          <span className="sr-only">选择头像图片</span>
+        </label>
         <div className="text-center text-sm text-gray-600 sm:text-left">
           <p>支持 JPG / PNG / WebP / GIF，约 350KB 以内。</p>
-          <p className="mt-1 text-xs text-gray-400">头像保存在账号上，全组织可见。</p>
           {avatarUrl ?
             <button
               type="button"
