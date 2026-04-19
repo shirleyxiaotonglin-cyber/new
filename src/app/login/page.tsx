@@ -9,11 +9,7 @@ import { PRODUCT_TAGLINE } from "@/lib/product-brand";
 
 type Mode = "login" | "register";
 
-/** 生产环境默认关闭演示入口，避免误点被切到 demo 账号；需显式设 NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true */
-const showDemoLogin =
-  process.env.NODE_ENV !== "production" ||
-  process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN === "true";
-
+/** 服务端 /api/auth/demo：生产环境需配置 NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true 方可真正登录成功 */
 async function redirectAfterAuth(router: ReturnType<typeof useRouter>) {
   /** no-store：避免浏览器沿用上一位登录用户的 /api/auth/me 缓存响应 */
   const meRes = await fetch("/api/auth/me", {
@@ -271,32 +267,34 @@ export default function LoginPage() {
               </button>
             )}
 
-            {showDemoLogin ? (
-              <>
-                <div className="relative py-2">
-                  <div className="absolute inset-0 flex items-center" aria-hidden>
-                    <div className="w-full border-t border-gray-200" />
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="bg-white px-3 text-gray-400">或</span>
-                  </div>
+            <>
+              <div className="relative py-2">
+                <div className="absolute inset-0 flex items-center" aria-hidden>
+                  <div className="w-full border-t border-gray-200" />
                 </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-white px-3 text-gray-400">或</span>
+                </div>
+              </div>
 
-                <button
-                  type="button"
-                  disabled={loading}
-                  className="w-full rounded-lg border border-dashed border-red-300 bg-red-50 py-3 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
-                  onClick={() => void demoLogin()}
-                >
-                  {loading ? "处理中…" : "一键演示账号登录"}
-                </button>
-                <p className="text-center text-[11px] leading-relaxed text-gray-500">
-                  演示账号: demo@projecthub.io / demo123456。
-                  <br />
-                  若生产库从未执行 seed，点击上方按钮会自动创建演示数据。
-                </p>
-              </>
-            ) : null}
+              <button
+                type="button"
+                disabled={loading}
+                className="w-full rounded-lg border border-dashed border-red-300 bg-red-50 py-3 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                onClick={() => void demoLogin()}
+              >
+                {loading ? "处理中…" : "演示账号一键登录"}
+              </button>
+              <p className="text-center text-[11px] leading-relaxed text-gray-500">
+                演示账号：demo@projecthub.io / demo123456
+                <br />
+                首次使用会自动创建演示数据。若线上提示无法演示，请在部署环境配置{" "}
+                <code className="rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-700">
+                  NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true
+                </code>
+                。
+              </p>
+            </>
           </div>
         </div>
       </div>
