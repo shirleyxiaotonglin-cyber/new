@@ -12,15 +12,17 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/product-brand";
+import type { OrgNavUser } from "@/components/layout/OrgNavUserSummary";
+import { OrgNavUserSidebarCard } from "@/components/layout/OrgNavUserSummary";
 
 export function OrgSidebar({
   orgId,
   orgName,
-  userName,
+  navUser,
 }: {
   orgId: string;
   orgName: string;
-  userName: string;
+  navUser: OrgNavUser;
 }) {
   const pathname = usePathname();
   const base = `/org/${orgId}`;
@@ -84,6 +86,9 @@ export function OrgSidebar({
         <p className="mt-3 truncate border-t border-red-500/50 pt-3 text-sm font-medium text-red-50" title={orgName}>
           {orgName}
         </p>
+        <div className="mt-3 border-t border-red-500/50 pt-3">
+          <OrgNavUserSidebarCard user={navUser} />
+        </div>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-4">
@@ -114,9 +119,6 @@ export function OrgSidebar({
       </nav>
 
       <div className="border-t border-red-500 p-3">
-        <p className="truncate px-1 text-xs text-red-100" title={userName}>
-          {userName}
-        </p>
         <button
           type="button"
           onClick={() => void logout()}

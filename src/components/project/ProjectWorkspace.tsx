@@ -261,6 +261,8 @@ export function ProjectWorkspace({
   const [selected, setSelected] = useState<TaskRow | null>(null);
   const [assigneeEmailDraft, setAssigneeEmailDraft] = useState("");
   const [assistEmailDraft, setAssistEmailDraft] = useState("");
+  /** 重置「添加协助人」下拉，便于连续添加后回到占位项 */
+  const [assistMemberSelectKey, setAssistMemberSelectKey] = useState(0);
   const [dragging, setDragging] = useState<TaskRow | null>(null);
   const [aiText, setAiText] = useState("");
   /** OpenRouter 解析后的预览（尚未写入数据库） */
@@ -490,6 +492,7 @@ export function ProjectWorkspace({
   useEffect(() => {
     setAssigneeEmailDraft("");
     setAssistEmailDraft("");
+    setAssistMemberSelectKey((k) => k + 1);
   }, [selected?.id]);
 
   async function deleteTask(id: string): Promise<boolean> {
@@ -575,14 +578,11 @@ export function ProjectWorkspace({
     if (!selected) return;
     const em = assistEmailDraft.trim();
     if (!em) return;
-    const mails = new Set<string>();
-    for (const a of selected.assistants ?? []) {
-      const e = a.user.email?.trim().toLowerCase();
-      if (e) mails.add(e);
-    }
-    mails.add(em.toLowerCase());
+    /** 必须保留仅有 userId、无邮箱的协助人；与 assistantEmails 合并由接口完成 */
+    const currentIds = (selected.assistants ?? []).map((a) => a.user.id);
     const ok = await patchTask(selected.id, {
-      assistantEmails: Array.from(mails),
+      assistantIds: currentIds,
+      assistantEmails: [em],
     });
     if (ok) setAssistEmailDraft("");
   }
@@ -1333,8 +1333,41 @@ export function ProjectWorkspace({
             <div>
               <label className="text-xs font-medium text-gray-500">协助人</label>
               <p className="mb-2 text-[11px] text-gray-400">
-                勾选左侧项目成员，或在下框用邮箱添加：对方须已注册，添加后将自动加入本项目并出现在此任务中。
+                用下方下拉或勾选成员添加；亦可填写<strong>对方注册邮箱</strong>添加（须已注册，将自动加入本项目）。
+                负责人不会出现在协助人列表中。
               </p>
+              <select
+                key={`${selected.id}-assist-add-${assistMemberSelectKey}`}
+                className="mb-2 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900"
+                defaultValue=""
+                onChange={(e) => {
+                  const uid = e.target.value;
+                  if (!uid || !selected) return;
+                  const aid = new Set((selected.assistants ?? []).map((a) => a.user.id));
+                  if (aid.has(uid)) {
+                    setAssistMemberSelectKey((k) => k + 1);
+                    return;
+                  }
+                  aid.add(uid);
+                  void patchTask(selected.id, { assistantIds: Array.from(aid) }).then(() => {
+                    setAssistMemberSelectKey((k) => k + 1);
+                  });
+                }}
+              >
+                <option value="">添加协助人（从项目成员中选择）…</option>
+                {projectMembers
+                  .filter((m) => {
+                    if (selected.assignee?.id === m.user.id) return false;
+                    const cur = new Set((selected.assistants ?? []).map((a) => a.user.id));
+                    return !cur.has(m.user.id);
+                  })
+                  .map((m) => (
+                    <option key={m.user.id} value={m.user.id}>
+                      {userDisplayName(m.user)}
+                      {m.user.email ? ` (${m.user.email})` : ""}
+                    </option>
+                  ))}
+              </select>
               <div className="max-h-36 space-y-1.5 overflow-y-auto rounded border border-gray-200 bg-gray-50/80 px-2 py-2">
                 {projectMembers.length === 0 ? (
                   <p className="text-xs text-gray-500">暂无项目成员</p>

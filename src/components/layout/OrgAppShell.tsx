@@ -5,13 +5,17 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { PRODUCT_NAME } from "@/lib/product-brand";
+import type { OrgNavUser } from "@/components/layout/OrgNavUserSummary";
+import { OrgNavUserMobileChip } from "@/components/layout/OrgNavUserSummary";
 
 export function OrgAppShell({
   sidebar,
   children,
+  navUser,
 }: {
   sidebar: React.ReactNode;
   children: React.ReactNode;
+  navUser: OrgNavUser;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -22,19 +26,21 @@ export function OrgAppShell({
 
   return (
     <div className="flex min-h-screen bg-white">
-      <header className="fixed left-0 right-0 top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-red-700 bg-red-600 px-4 text-white shadow-sm md:hidden">
+      <header className="fixed left-0 right-0 top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-red-700 bg-red-600 px-2 pl-3 pr-2 text-white shadow-sm md:hidden">
         <button
           type="button"
-          className="rounded-lg p-2 hover:bg-red-700"
+          className="shrink-0 rounded-lg p-2 hover:bg-red-700"
           aria-label="打开菜单"
           onClick={() => setOpen(true)}
         >
           <Menu className="h-6 w-6" />
         </button>
-        <span className="max-w-[calc(100vw-5rem)] truncate text-center text-xs font-bold leading-tight tracking-tight">
+        <span className="min-w-0 flex-1 truncate text-center text-xs font-bold leading-tight tracking-tight">
           {PRODUCT_NAME}
         </span>
-        <span className="w-10" />
+        <div className="shrink-0">
+          <OrgNavUserMobileChip user={navUser} />
+        </div>
       </header>
 
       <div
