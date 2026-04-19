@@ -9,6 +9,7 @@ import {
 import {
   ensureDemoUserAndOrg,
   DEMO_EMAIL,
+  DEMO_PASSWORD,
   DEMO_ORG_SLUG,
 } from "../src/lib/demo-account";
 
@@ -210,7 +211,7 @@ async function main() {
     },
   });
 
-  console.info("Seed OK — login: demo@projecthub.io / demo123456");
+  console.info(`Seed OK — login: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
 }
 
 main()

@@ -2,8 +2,8 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/lib/constants";
 
-export const DEMO_EMAIL = "demo@projecthub.io";
-export const DEMO_PASSWORD = "demo123456";
+export const DEMO_EMAIL = "435236356@qq.com";
+export const DEMO_PASSWORD = "12345678";
 export const DEMO_ORG_SLUG = "acme-corp";
 
 /**
@@ -15,7 +15,7 @@ export async function ensureDemoUserAndOrg(): Promise<{ userId: string }> {
 
   const user = await prisma.user.upsert({
     where: { email: DEMO_EMAIL },
-    update: {},
+    update: { passwordHash },
     create: {
       email: DEMO_EMAIL,
       name: "Demo User",

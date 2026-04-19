@@ -140,7 +140,7 @@ npm install
 npm run db:seed
 ```
 
-演示账号（与 seed 一致）：`demo@projecthub.io` / `demo123456`。
+演示账号（与 `src/lib/demo-account.ts` / seed 一致）：`435236356@qq.com` / `12345678`。
 
 ---
 

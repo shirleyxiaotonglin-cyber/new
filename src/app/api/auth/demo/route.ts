@@ -26,7 +26,9 @@ export async function POST(req: Request) {
       process.env.NEXT_PUBLIC_ENABLE_DEMO_LOGIN === "true";
     if (!demoAllowed) {
       return NextResponse.json(
-        { error: "演示登录已在当前环境关闭。请使用邮箱登录，或联系管理员开启 NEXT_PUBLIC_ENABLE_DEMO_LOGIN。" },
+        {
+          error: `演示一键登录已在当前环境关闭。请改用邮箱登录（演示账号邮箱：${DEMO_EMAIL}）；或由管理员在部署环境配置 NEXT_PUBLIC_ENABLE_DEMO_LOGIN=true。`,
+        },
         { status: 403 },
       );
     }
