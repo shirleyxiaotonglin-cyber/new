@@ -93,8 +93,8 @@ export default async function Home() {
             <span className="block sm:inline">一页掌握进度</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-center text-lg leading-relaxed text-gray-600">
-            从项目与任务、甘特排期，到成员协作、消息与文件，以及可选的 AI
-            建任务；各模块数据相互关联，在电脑与手机浏览器中即可使用。
+            核心目标是把「任务管理、进度可视化、文件交付、团队协作与 AI
+            辅助」整合到一个统一平台中，实现从项目创建到执行交付的完整闭环。
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link
