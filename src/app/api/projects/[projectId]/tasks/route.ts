@@ -60,6 +60,8 @@ const CreateBody = z.object({
   parentId: z.string().nullable().optional(),
   predecessorIds: z.array(z.string()).optional(),
   tagIds: z.array(z.string()).optional(),
+  /** 协助人（须为项目成员）；可与 PATCH 任务接口一致 */
+  assistantIds: z.array(z.string()).optional(),
 });
 
 export async function POST(req: Request, ctx: Ctx) {
@@ -83,47 +85,71 @@ export async function POST(req: Request, ctx: Ctx) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const memberRows = await prisma.projectMember.findMany({
+    where: { projectId },
+    select: { userId: true },
+  });
+  const memberSet = new Set(memberRows.map((m) => m.userId));
+  if (parsed.data.assigneeId && !memberSet.has(parsed.data.assigneeId)) {
+    return NextResponse.json({ error: "负责人须为当前项目成员" }, { status: 400 });
+  }
+  const assistantIdsRaw = parsed.data.assistantIds ?? [];
+  const assistantIds = assistantIdsRaw.filter((id) => id !== parsed.data.assigneeId);
+  for (const uid of assistantIds) {
+    if (!memberSet.has(uid)) {
+      return NextResponse.json({ error: "协助人须为当前项目成员" }, { status: 400 });
+    }
+  }
+
   const maxOrder = await prisma.task.aggregate({
     where: { projectId },
     _max: { sortOrder: true },
   });
 
+  const assistantUnique = Array.from(new Set(assistantIds));
+
   const task = await prisma.task.create({
     data: {
-      projectId,
       title: parsed.data.title,
       description: parsed.data.description,
       status: parsed.data.status ?? TaskStatus.TODO,
       priority: parsed.data.priority ?? TaskPriority.P2,
-      assigneeId: parsed.data.assigneeId ?? undefined,
+      project: { connect: { id: projectId } },
+      ...(parsed.data.assigneeId ? { assignee: { connect: { id: parsed.data.assigneeId } } } : {}),
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : undefined,
       startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : undefined,
-      progress: parsed.data.progress,
-      parentId: parsed.data.parentId ?? undefined,
+      ...(typeof parsed.data.progress === "number" ? { progress: parsed.data.progress } : {}),
+      ...(parsed.data.parentId ? { parent: { connect: { id: parsed.data.parentId } } } : {}),
       sortOrder: (maxOrder._max.sortOrder ?? 0) + 1,
       tags:
         parsed.data.tagIds && parsed.data.tagIds.length
           ? {
-              createMany: {
-                data: parsed.data.tagIds.map((tagId) => ({ tagId })),
-              },
+              create: parsed.data.tagIds.map((tagId) => ({
+                tag: { connect: { id: tagId } },
+              })),
             }
           : undefined,
       dependenciesSuccessors:
         parsed.data.predecessorIds && parsed.data.predecessorIds.length
           ? {
-              createMany: {
-                data: parsed.data.predecessorIds.map((predecessorId) => ({
-                  predecessorId,
-                })),
-              },
+              create: parsed.data.predecessorIds.map((predecessorId) => ({
+                predecessor: { connect: { id: predecessorId } },
+              })),
+            }
+          : undefined,
+      assistants:
+        assistantUnique.length > 0
+          ? {
+              create: assistantUnique.map((userId) => ({
+                user: { connect: { id: userId } },
+              })),
             }
           : undefined,
       activities: {
         create: {
-          userId: session.sub,
           action: ActivityAction.TASK_CREATED,
           meta: JSON.stringify({ title: parsed.data.title }),
+          user: { connect: { id: session.sub } },
         },
       },
     },

@@ -7,6 +7,153 @@ type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 export type OpenRouterErrorCode = "MISSING_API_KEY" | "HTTP_ERROR" | "PARSE_ERROR";
 
+/** 实际用于 HTTP-Referer 的来源（与浏览器里「其他网站」可能不同，可影响上游策略） */
+export type OpenRouterRefererSource =
+  | "OPENROUTER_HTTP_REFERER"
+  | "NEXT_PUBLIC_APP_URL"
+  | "default_localhost"
+  | "omitted";
+
+/**
+ * 服务端请求 OpenRouter 时附带的应用标识（见 OpenRouter 文档：HTTP-Referer、X-Title）。
+ * 与「在别的网站能调通」相比，本应用从 Vercel/本地发请求，Referer/出口 IP 常不同，可显式设置
+ * OPENROUTER_HTTP_REFERER 为线上 https 根地址，与开放者中心里的应用 URL 一致。
+ */
+export function getOpenRouterAttribution(): {
+  referer: string;
+  title: string;
+  omitAttribution: boolean;
+  refererSource: OpenRouterRefererSource;
+} {
+  const title = process.env.OPENROUTER_APP_TITLE?.trim() || "ProjectHub";
+  const omit =
+    process.env.OPENROUTER_OMIT_ATTRIBUTION?.trim() === "1" ||
+    process.env.OPENROUTER_OMIT_ATTRIBUTION?.toLowerCase().trim() === "true";
+
+  if (omit) {
+    return {
+      referer: "",
+      title,
+      omitAttribution: true,
+      refererSource: "omitted",
+    };
+  }
+
+  const explicit = process.env.OPENROUTER_HTTP_REFERER?.trim();
+  if (explicit) {
+    return {
+      referer: explicit,
+      title,
+      omitAttribution: false,
+      refererSource: "OPENROUTER_HTTP_REFERER",
+    };
+  }
+
+  const nextPublic = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (nextPublic) {
+    return {
+      referer: nextPublic,
+      title,
+      omitAttribution: false,
+      refererSource: "NEXT_PUBLIC_APP_URL",
+    };
+  }
+
+  return {
+    referer: "http://localhost:3000",
+    title,
+    omitAttribution: false,
+    refererSource: "default_localhost",
+  };
+}
+
+/** OpenRouter POST 的请求头（含 Authorization）；omit 时不附带 Referer / X-Title。 */
+export function openRouterRequestHeaders(apiKey: string): Record<string, string> {
+  const { referer, title, omitAttribution } = getOpenRouterAttribution();
+  const h: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+  if (!omitAttribution) {
+    h["HTTP-Referer"] = referer;
+    h["X-Title"] = title;
+  }
+  return h;
+}
+
+/** 附加在 HTTP 类错误上，便于 API 返回友好文案 */
+export type OpenRouterHttpError = Error & {
+  code: OpenRouterErrorCode;
+  httpStatus: number;
+  /** OpenRouter error.message */
+  upstreamMessage?: string;
+  /** 审核类 403 时可能有 */
+  moderationReasons?: string[];
+  flaggedInputSnippet?: string;
+  /** 最终使用的模型（含 fallback） */
+  modelUsed?: string;
+};
+
+function parseOpenRouterBody(text: string): {
+  upstreamMessage?: string;
+  nestedCode?: number;
+  metadata?: Record<string, unknown>;
+} {
+  try {
+    const j = JSON.parse(text) as {
+      error?: { message?: string; code?: number; metadata?: Record<string, unknown> };
+    };
+    const err = j?.error;
+    return {
+      upstreamMessage: typeof err?.message === "string" ? err.message : undefined,
+      nestedCode: typeof err?.code === "number" ? err.code : undefined,
+      metadata: err?.metadata && typeof err.metadata === "object" ? err.metadata : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function moderationFromMeta(meta: Record<string, unknown> | undefined): {
+  reasons?: string[];
+  flagged?: string;
+} {
+  if (!meta) return {};
+  const reasons = meta.reasons;
+  const flagged = meta.flagged_input;
+  return {
+    reasons: Array.isArray(reasons)
+      ? reasons.filter((x): x is string => typeof x === "string")
+      : undefined,
+    flagged: typeof flagged === "string" ? flagged : undefined,
+  };
+}
+
+function buildHttpError(
+  status: number,
+  bodyText: string,
+  modelUsed: string,
+): OpenRouterHttpError {
+  const parsed = parseOpenRouterBody(bodyText);
+  const mod = moderationFromMeta(parsed.metadata);
+  const upstream =
+    parsed.upstreamMessage ?? (bodyText.slice(0, 300).trim() || `HTTP ${status}`);
+
+  const short =
+    status === 403
+      ? `OpenRouter 403：${upstream}`
+      : `OpenRouter ${status}: ${upstream}`;
+
+  const err = new Error(short) as OpenRouterHttpError;
+  err.code = "HTTP_ERROR";
+  err.httpStatus = status;
+  err.upstreamMessage = upstream;
+  err.modelUsed = modelUsed;
+  if (mod.reasons?.length) err.moderationReasons = mod.reasons;
+  if (mod.flagged) err.flaggedInputSnippet = mod.flagged;
+  return err;
+}
+
 export async function openRouterComplete(
   messages: ChatMessage[],
   options?: {
@@ -15,45 +162,54 @@ export async function openRouterComplete(
     temperature?: number;
   },
 ): Promise<{ content: string; rawModel: string }> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey?.trim()) {
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) {
     const err = new Error("OPENROUTER_API_KEY is not set") as Error & { code: OpenRouterErrorCode };
     err.code = "MISSING_API_KEY";
     throw err;
   }
 
-  const model =
+  /* 供内联 async 闭包使用，便于 TS 将密钥收窄为 string */
+  const bearerKey = apiKey;
+
+  const primaryModel =
     options?.model?.trim() ||
     process.env.OPENROUTER_MODEL?.trim() ||
     "openai/gpt-4o-mini";
 
-  const referer = process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000";
+  const fallbackModel = process.env.OPENROUTER_FALLBACK_MODEL?.trim();
 
-  const body: Record<string, unknown> = {
-    model,
-    messages,
-    temperature: options?.temperature ?? 0.35,
-    max_tokens: 4096,
-  };
+  async function once(model: string): Promise<Response> {
+    const body: Record<string, unknown> = {
+      model,
+      messages,
+      temperature: options?.temperature ?? 0.35,
+      max_tokens: 4096,
+    };
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": referer,
-      "X-Title": "ProjectHub",
-    },
-    body: JSON.stringify(body),
-  });
+    return fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: openRouterRequestHeaders(bearerKey),
+      body: JSON.stringify(body),
+    });
+  }
+
+  let res = await once(primaryModel);
+  let modelUsed = primaryModel;
+
+  if (
+    !res.ok &&
+    res.status === 403 &&
+    fallbackModel &&
+    fallbackModel !== primaryModel
+  ) {
+    res = await once(fallbackModel);
+    modelUsed = fallbackModel;
+  }
 
   if (!res.ok) {
     const t = await res.text();
-    const err = new Error(`OpenRouter ${res.status}: ${t.slice(0, 500)}`) as Error & {
-      code: OpenRouterErrorCode;
-    };
-    err.code = "HTTP_ERROR";
-    throw err;
+    throw buildHttpError(res.status, t, modelUsed);
   }
 
   const data = (await res.json()) as {
@@ -66,7 +222,7 @@ export async function openRouterComplete(
     err.code = "PARSE_ERROR";
     throw err;
   }
-  return { content, rawModel: data.model ?? model };
+  return { content, rawModel: data.model ?? modelUsed };
 }
 
 /** 从模型输出中提取 JSON（处理 ```json 围栏） */
@@ -77,4 +233,14 @@ export function extractJsonObject(text: string): string {
   const end = text.lastIndexOf("}");
   if (start >= 0 && end > start) return text.slice(start, end + 1);
   return text.trim();
+}
+
+export function isOpenRouterHttpError(e: unknown): e is OpenRouterHttpError {
+  return (
+    e instanceof Error &&
+    "httpStatus" in e &&
+    typeof (e as OpenRouterHttpError).httpStatus === "number" &&
+    "code" in e &&
+    (e as { code?: string }).code === "HTTP_ERROR"
+  );
 }

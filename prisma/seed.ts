@@ -1,42 +1,27 @@
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
 import {
-  OrgRole,
   ProjectMemberRole,
   ProjectTemplate,
   TaskPriority,
   TaskStatus,
   ActivityAction,
 } from "../src/lib/constants";
+import {
+  ensureDemoUserAndOrg,
+  DEMO_EMAIL,
+  DEMO_ORG_SLUG,
+} from "../src/lib/demo-account";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const passwordHash = await bcrypt.hash("demo123456", 12);
+  await ensureDemoUserAndOrg();
 
-  const user = await prisma.user.upsert({
-    where: { email: "demo@projecthub.io" },
-    update: {},
-    create: {
-      email: "demo@projecthub.io",
-      name: "Demo User",
-      passwordHash,
-    },
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { email: DEMO_EMAIL },
   });
-
-  const org = await prisma.organization.upsert({
-    where: { slug: "acme-corp" },
-    update: {},
-    create: {
-      name: "ACME Corp",
-      slug: "acme-corp",
-      members: {
-        create: {
-          userId: user.id,
-          role: OrgRole.OWNER,
-        },
-      },
-    },
+  const org = await prisma.organization.findUniqueOrThrow({
+    where: { slug: DEMO_ORG_SLUG },
   });
 
   await prisma.team.upsert({

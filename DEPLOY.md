@@ -2,7 +2,38 @@
 
 应用为 **Next.js 14 + Prisma + PostgreSQL**。无持久磁盘的托管（如 Vercel）**不能使用 SQLite**，仓库已默认使用 Postgres 迁移。
 
-## 方案 A：Vercel + Neon（推荐，零运维）
+邮箱注册、登录与数据归属账号由应用自身 API + Postgres 完成；数据库使用 **Neon / Supabase / 任意 Postgres** 均可。
+
+## 方案 A（补充）：Supabase 作为数据库
+
+你的 Supabase 项目控制台：<https://supabase.com/dashboard/project/eueryfsdyesxcrwotvnz>
+
+1. 左侧 **Project Settings**（齿轮）→ **Database**。  
+2. 复制 **Database password**（若忘了可 **Reset database password**）。  
+3. **Connection string** → 选 **URI**，把 `[YOUR-PASSWORD]` 换成真实密码。
+
+在 **`.env` / Vercel 环境变量** 中配置两项（含义见 `.env.example`）：
+
+| 变量 | 说明 |
+|------|------|
+| `DATABASE_URL` | 建议使用 **Session pooler / Transaction** 连接串（适合 Vercel Serverless）；若文档中带 `?pgbouncer=true` 请保留。 |
+| `DIRECT_URL` | **直连**（通常为端口 **5432**、不走 pooler），供 `prisma migrate deploy` 建表。 |
+
+本地开发若直连本机 Postgres，无连接池时，可将 **`DATABASE_URL` 与 `DIRECT_URL` 设为同一串**。
+
+4. 终端执行（对齐远程库结构）：
+
+```bash
+npx prisma migrate deploy
+```
+
+5. （可选）演示数据：`npm run db:seed`。
+
+> **说明**：当前仓库使用 **自建邮箱密码注册**（`/api/auth/register`），密码哈希存在你的 Postgres `User` 表中，**不要求**启用 Supabase Auth。若日后要改用 Supabase Auth，需单独接入 `@supabase/supabase-js` 并与 Prisma 用户表对齐。
+
+---
+
+## 方案 B：Vercel + Neon（推荐，零运维）
 
 ### 1. 准备数据库（Neon）
 
@@ -21,9 +52,14 @@
 
 ### 4. 环境变量（Vercel → Settings → Environment Variables）
 
+在 Neon **Connection details** 里通常有两种连接串，需要**分开**填：
+
 | 变量名 | 说明 |
 |--------|------|
-| `DATABASE_URL` | Neon 连接串（务必带 `?sslmode=require`） |
+| `DATABASE_URL` | 使用 **Pooled**（连接串里主机名常含 `-pooler`），适合 Vercel Serverless。务必带 `?sslmode=require`。 |
+| `DIRECT_URL` | 使用 **Direct**（直连，主机名**不应**含 `pooler`）。供 `prisma migrate deploy`；若误把 Pooler 填进 `DIRECT_URL`，构建会出现 **P1002 / advisory lock 超时**。 |
+
+若本地开发只有一条直连串，本地可将 `DATABASE_URL` 与 `DIRECT_URL` 设为相同；**上 Vercel + Neon 时务必按上表区分**。
 | `JWT_SECRET` | 至少 32 位随机字符串；用于登录 Cookie，勿提交到 Git |
 | `NEXT_PUBLIC_APP_URL` | 生产站点根地址，例如 `https://xxx.vercel.app` 或你的自定义域名 |
 
@@ -55,7 +91,7 @@ npm run db:seed
 
 ---
 
-## 方案 B：Docker 自有服务器 / Railway / Fly.io
+## 方案 C：Docker 自有服务器 / Railway / Fly.io
 
 在目标环境提供：
 

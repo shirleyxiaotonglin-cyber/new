@@ -41,6 +41,15 @@ export function broadcastProjectSync(
   emitProject(projectId, { type: "sync", ...meta });
 }
 
+/** 任务内聊天：客户端按 taskId 追加消息，无需整页同步 */
+export function broadcastTaskChat(
+  projectId: string,
+  taskId: string,
+  message: Record<string, unknown>,
+) {
+  emitProject(projectId, { type: "task_chat", taskId, message });
+}
+
 const PRESENCE_TTL_MS = 45_000;
 
 export type PresenceViewer = {

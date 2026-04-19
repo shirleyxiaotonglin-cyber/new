@@ -1,18 +1,21 @@
-// 本地可用 Docker Postgres（见 docker-compose.yml）或 Neon；DATABASE_URL 指向 Postgres。
+// 本地 Docker / Neon / Supabase 等 Postgres。Supabase 建议：DATABASE_URL 用连接池，DIRECT_URL 用直连（迁移）。
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  /// 登录名 / 用户名（可选，全局唯一）
+  username     String?  @unique
   name         String
   avatarUrl    String?
   createdAt    DateTime @default(now())
@@ -29,6 +32,23 @@ model User {
   notifications  Notification[]
   auditLogs      AuditLog[]
   filesUploaded  FileAsset[]
+  passwordResetTokens PasswordResetToken[]
+  directThreadsAsLow   DirectThread[]    @relation("DirectThreadLow")
+  directThreadsAsHigh  DirectThread[]    @relation("DirectThreadHigh")
+  sentDirectMessages   DirectMessage[]
+  taskChatMessages     TaskChatMessage[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Organization {
@@ -54,15 +74,19 @@ model OrgMember {
   userId       String
   role         String   @default("MEMBER")
   customRoleId String?
+  /// 在本组织内的部门（可选）
+  departmentId String?
   joinedAt     DateTime @default(now())
 
   org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   customRole CustomRole?  @relation(fields: [customRoleId], references: [id])
+  department Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, userId])
   @@index([orgId])
   @@index([userId])
+  @@index([departmentId])
 }
 
 model Department {
@@ -71,9 +95,10 @@ model Department {
   name     String
   parentId String?
 
-  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  parent Department?  @relation("DeptTree", fields: [parentId], references: [id])
-  child  Department[] @relation("DeptTree")
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  parent    Department?  @relation("DeptTree", fields: [parentId], references: [id])
+  child     Department[] @relation("DeptTree")
+  orgMembers OrgMember[]
 }
 
 model Team {
@@ -175,10 +200,54 @@ model Task {
   attachments              Attachment[]
   activities               Activity[]
   aiInsights               AiInsight[]
+  chatMessages             TaskChatMessage[]
 
   @@index([projectId])
   @@index([assigneeId])
   @@index([dueDate])
+}
+
+/// 1v1 私聊线程（两人 id 排序后唯一；与任务无关，全站共用一个会话）
+model DirectThread {
+  id         String   @id @default(cuid())
+  userLowId  String
+  userHighId String
+  createdAt  DateTime @default(now())
+
+  userLow  User @relation("DirectThreadLow", fields: [userLowId], references: [id], onDelete: Cascade)
+  userHigh User @relation("DirectThreadHigh", fields: [userHighId], references: [id], onDelete: Cascade)
+  messages DirectMessage[]
+
+  @@unique([userLowId, userHighId])
+  @@index([userLowId])
+  @@index([userHighId])
+}
+
+model DirectMessage {
+  id        String   @id @default(cuid())
+  threadId  String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  thread DirectThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+/// 任务内群聊（项目成员均可参与，见 API 权限）
+model TaskChatMessage {
+  id        String   @id @default(cuid())
+  taskId    String
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
 }
 
 /// 任务协助人（项目成员中的多位协作方）

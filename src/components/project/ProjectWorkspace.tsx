@@ -26,20 +26,31 @@ import {
 import {
   Activity,
   BarChart3,
-  CalendarDays,
   Columns3,
   GanttChart as GanttIcon,
   LayoutList,
   Loader2,
+  MessageCircle,
+  Pencil,
+  Plus,
   Search,
   Sparkles,
+  Trash2,
   Users,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/cn";
 import { TaskStatus, TaskPriority } from "@/lib/constants";
+import { CreateTaskModal } from "@/components/project/CreateTaskModal";
 import { GanttChartView } from "@/components/project/GanttChartView";
 import { useProjectRealtime } from "@/hooks/useProjectRealtime";
+import {
+  DirectChatDrawer,
+  type ChatPeer,
+  type DmPushPayload,
+} from "@/components/chat/DirectChatDrawer";
+import { TaskChatSection } from "@/components/chat/TaskChatSection";
+import { useUserRealtime, type DirectMessageEvent } from "@/hooks/useUserRealtime";
 
 type TaskRow = {
   id: string;
@@ -59,6 +70,12 @@ type TaskRow = {
   assistants?: { user: { id: string; name: string; email?: string | null } }[];
 };
 
+function apiErrorWithHint(j: Record<string, unknown>, fallback: string): string {
+  const err = typeof j.error === "string" ? j.error : fallback;
+  const hint = typeof j.hint === "string" ? j.hint : "";
+  return hint ? `${err}\n\n${hint}` : err;
+}
+
 function normalizeTaskRow(t: TaskRow): TaskRow {
   return {
     ...t,
@@ -76,7 +93,14 @@ type ProjectMemberOption = {
   user: { id: string; name: string; email: string };
 };
 
-type View = "board" | "list" | "timeline" | "gantt" | "calendar" | "dashboard" | "activity";
+type View =
+  | "board"
+  | "list"
+  | "timeline"
+  | "gantt"
+  | "dashboard"
+  | "activity"
+  | "ai";
 
 type AnalyticsBundle = {
   summary: {
@@ -241,14 +265,48 @@ export function ProjectWorkspace({
         priority: string;
         status: string;
         dueDate: string | null;
+        startDate: string | null;
+        /** 甘特进度 0–100，与任务详情滑块一致 */
+        progress: number | null;
+        assigneeName: string | null;
+        assignee: { id: string; name: string } | null;
+        assigneeUnresolved?: boolean;
+        assistants: { id: string; name: string }[];
       }[]
     | null
   >(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiApplyLoading, setAiApplyLoading] = useState(false);
   const [aiNotice, setAiNotice] = useState<string | null>(null);
+  const aiPreviewRef = useRef<HTMLDivElement | null>(null);
+  /** OpenRouter 后端配置（不含密钥） */
+  const [openRouterStatus, setOpenRouterStatus] = useState<{
+    configured: boolean;
+    model: string;
+    refererSource?: string;
+    effectiveHttpReferer?: string | null;
+    omitAttribution?: boolean;
+  } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [createTaskOpen, setCreateTaskOpen] = useState(false);
+  /** 私聊抽屉 */
+  const [dmOpen, setDmOpen] = useState(false);
+  const [dmPeer, setDmPeer] = useState<ChatPeer | null>(null);
+  /** 任务讨论 SSE 透传 */
+  const [taskChatRemote, setTaskChatRemote] = useState<{
+    taskId: string;
+    message: {
+      id: string;
+      body: string;
+      createdAt: string;
+      senderId: string;
+      sender: { id: string; name: string; avatarUrl: string | null };
+    };
+  } | null>(null);
+  /** 私聊 SSE：进入项目即可收推送（无需先打开抽屉） */
+  const [dmPush, setDmPush] = useState<DmPushPayload | null>(null);
+  const clearDmPush = useCallback(() => setDmPush(null), []);
 
   /** 标题/描述防抖写入，避免未失焦就刷新导致未保存 */
   const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -335,11 +393,60 @@ export function ProjectWorkspace({
     void load();
   }, [load]);
 
-  const { othersPresence } = useProjectRealtime(projectId, {
+  useEffect(() => {
+    if (loading || loadError) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/ai/status`, {
+          credentials: "include",
+        });
+        const j = (await res.json()) as {
+          configured?: boolean;
+          model?: string;
+          refererSource?: string;
+          effectiveHttpReferer?: string | null;
+          omitAttribution?: boolean;
+        };
+        if (cancelled || !res.ok) return;
+        setOpenRouterStatus({
+          configured: j.configured === true,
+          model: typeof j.model === "string" ? j.model : "openai/gpt-4o-mini",
+          refererSource: typeof j.refererSource === "string" ? j.refererSource : undefined,
+          effectiveHttpReferer:
+            j.effectiveHttpReferer === null || typeof j.effectiveHttpReferer === "string"
+              ? j.effectiveHttpReferer
+              : undefined,
+          omitAttribution: j.omitAttribution === true,
+        });
+      } catch {
+        if (!cancelled) setOpenRouterStatus(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, loading, loadError]);
+
+  const { othersPresence, meId } = useProjectRealtime(projectId, {
     onSync: load,
     viewingTaskId: selected?.id ?? null,
     enabled: !loading && !loadError,
+    onTaskChat: (p) => setTaskChatRemote(p),
   });
+
+  useUserRealtime(!loading && !loadError && !!meId, (ev) => {
+    if (ev.type !== "direct_message") return;
+    const d = ev as DirectMessageEvent;
+    setDmPush({
+      threadId: d.threadId,
+      message: d.message,
+    });
+  });
+
+  useEffect(() => {
+    setDmPush(null);
+  }, [dmPeer?.id]);
 
   useEffect(() => {
     setSelected((prev) => {
@@ -357,6 +464,12 @@ export function ProjectWorkspace({
     };
   }, [selected?.id]);
 
+  useEffect(() => {
+    if (aiPreview && aiPreview.length > 0) {
+      aiPreviewRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [aiPreview]);
+
   const tasksByStatus = useMemo(() => {
     const m: Record<string, TaskRow[]> = {};
     for (const s of STATUSES) m[s] = [];
@@ -366,6 +479,33 @@ export function ProjectWorkspace({
     }
     return m;
   }, [tasks]);
+
+  async function deleteTask(id: string): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/tasks/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let message = `删除失败（${res.status}）`;
+        try {
+          const j = (await res.json()) as { error?: unknown };
+          if (typeof j.error === "string") message = j.error;
+        } catch {
+          /* ignore */
+        }
+        setSaveError(message);
+        return false;
+      }
+      setSaveError(null);
+      setSelected(null);
+      await load({ silent: true });
+      return true;
+    } catch {
+      setSaveError("网络异常，删除失败");
+      return false;
+    }
+  }
 
   async function patchTask(
     id: string,
@@ -477,7 +617,7 @@ export function ProjectWorkspace({
           role="alert"
           className="flex items-center justify-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-950"
         >
-          <span>{saveError}</span>
+          <span className="max-w-3xl whitespace-pre-line">{saveError}</span>
           <button
             type="button"
             className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-200"
@@ -499,16 +639,25 @@ export function ProjectWorkspace({
               ← 返回工作台
             </Link>
           </div>
-          <nav className="flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCreateTaskOpen(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700"
+            >
+              <Plus className="h-4 w-4" />
+              新建任务
+            </button>
+            <nav className="flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1">
             {(
               [
                 ["board", "看板", Columns3],
                 ["list", "列表", LayoutList],
                 ["timeline", "时间轴", Activity],
                 ["gantt", "甘特", GanttIcon],
-                ["calendar", "日历", CalendarDays],
                 ["dashboard", "报表", BarChart3],
                 ["activity", "动态", Search],
+                ["ai", "AI", Sparkles],
               ] as const
             ).map(([id, label, Icon]) => (
               <button
@@ -527,6 +676,7 @@ export function ProjectWorkspace({
               </button>
             ))}
           </nav>
+          </div>
         </div>
         {othersPresence.length > 0 ? (
           <div className="mx-auto mt-3 flex max-w-[1600px] flex-wrap items-center gap-2 border-t border-gray-100 pt-3 text-xs text-gray-600">
@@ -551,6 +701,11 @@ export function ProjectWorkspace({
       </header>
 
       <main className="mx-auto max-w-[1600px] px-4 py-6">
+        {tasks.length === 0 ? (
+          <div className="mb-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            暂无任务。点击上方「新建任务」手动添加，或切换到「AI」视图从文本批量导入。
+          </div>
+        ) : null}
         {view === "board" && (
           <DndContext
             sensors={sensors}
@@ -585,35 +740,107 @@ export function ProjectWorkspace({
         )}
 
         {view === "list" && (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-gray-200 bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 font-medium text-gray-600">任务</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">状态</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">优先级</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">负责人</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">截止</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map((t) => (
-                  <tr
-                    key={t.id}
-                    className="cursor-pointer border-b border-gray-100 hover:bg-red-50/50"
-                    onClick={() => setSelected(t)}
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-900">{t.title}</td>
-                    <td className="px-4 py-3 text-gray-600">{STATUS_LABEL[t.status] ?? t.status}</td>
-                    <td className="px-4 py-3 text-gray-600">{t.priority}</td>
-                    <td className="px-4 py-3 text-gray-600">{t.assignee?.name ?? "—"}</td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {t.dueDate ? format(new Date(t.dueDate), "yyyy-MM-dd") : "—"}
-                    </td>
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-600">
+                手动维护任务：新建、在侧栏编辑详情，或在本表「操作」列快速打开编辑 / 删除。
+              </p>
+              <button
+                type="button"
+                onClick={() => setCreateTaskOpen(true)}
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-100"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                列表中新建任务
+              </button>
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="border-b border-gray-200 bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 font-medium text-gray-600">任务</th>
+                    <th className="px-4 py-3 font-medium text-gray-600">状态</th>
+                    <th className="px-4 py-3 font-medium text-gray-600">优先级</th>
+                    <th className="px-4 py-3 font-medium text-gray-600">负责人</th>
+                    <th className="px-4 py-3 font-medium text-gray-600">截止</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-600">操作</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {tasks.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-500">
+                        暂无任务。点击「列表中新建任务」或顶部「新建任务」手动添加。
+                      </td>
+                    </tr>
+                  ) : (
+                    tasks.map((t) => (
+                    <tr
+                      key={t.id}
+                      className="cursor-pointer border-b border-gray-100 hover:bg-red-50/50"
+                      onClick={() => setSelected(t)}
+                    >
+                      <td className="max-w-[240px] truncate px-4 py-3 font-medium text-gray-900">
+                        {t.title}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{STATUS_LABEL[t.status] ?? t.status}</td>
+                      <td className="px-4 py-3 text-gray-600">{t.priority}</td>
+                      <td
+                        className="px-4 py-3 text-gray-600"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{t.assignee?.name ?? "—"}</span>
+                          {t.assignee && meId && t.assignee.id !== meId ? (
+                            <button
+                              type="button"
+                              className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                              onClick={() => {
+                                setDmPeer({ id: t.assignee!.id, name: t.assignee!.name });
+                                setDmOpen(true);
+                              }}
+                            >
+                              <MessageCircle className="mr-0.5 inline h-3 w-3" aria-hidden />
+                              私聊
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                        {t.dueDate ? format(new Date(t.dueDate), "yyyy-MM-dd") : "—"}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-4 py-3 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                            onClick={() => setSelected(t)}
+                          >
+                            <Pencil className="h-3 w-3" aria-hidden />
+                            编辑
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                            onClick={() => {
+                              if (!confirm(`确定删除任务「${t.title}」？此操作不可撤销。`)) return;
+                              void deleteTask(t.id);
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" aria-hidden />
+                            删除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
@@ -647,47 +874,6 @@ export function ProjectWorkspace({
               if (row) setSelected(row);
             }}
           />
-        )}
-
-        {view === "calendar" && (
-          <div className="rounded-xl border border-gray-200 bg-white p-6 text-gray-600">
-            <p className="mb-4 text-sm">
-              项目日历：按截止日期聚合；生产环境可用 FullCalendar + ics 订阅。
-            </p>
-            <div className="grid grid-cols-7 gap-2 text-center text-xs text-gray-500">
-              {["一", "二", "三", "四", "五", "六", "日"].map((d) => (
-                <div key={d} className="py-2 font-medium">
-                  {d}
-                </div>
-              ))}
-              {Array.from({ length: 28 }).map((_, i) => {
-                const dayTasks = tasks.filter(
-                  (t) =>
-                    t.dueDate &&
-                    new Date(t.dueDate).getDate() === (i + 1) &&
-                    new Date(t.dueDate).getMonth() === new Date().getMonth(),
-                );
-                return (
-                  <div
-                    key={i}
-                    className="min-h-[72px] rounded border border-gray-200 bg-gray-50 p-1 text-left"
-                  >
-                    <span className="text-[10px] text-gray-400">{i + 1}</span>
-                    {dayTasks.map((dt) => (
-                      <button
-                        key={dt.id}
-                        type="button"
-                        className="mt-0.5 block w-full truncate rounded bg-red-100 px-1 text-[10px] font-medium text-red-800"
-                        onClick={() => setSelected(dt)}
-                      >
-                        {dt.title}
-                      </button>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         )}
 
         {view === "dashboard" && analytics?.summary && (
@@ -751,133 +937,217 @@ export function ProjectWorkspace({
             ))}
           </div>
         )}
-      </main>
 
-      {/* AI 文本分析 — OpenRouter */}
-      <section className="mx-auto max-w-[1600px] border-t border-gray-200 bg-gray-50/50 px-4 py-8">
-        <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-800">
-          <Sparkles className="h-4 w-4 text-red-600" />
-          AI 文本分析（OpenRouter）
-          <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-normal text-gray-600">
-            看板 / 列表 / 甘特等同源同步
-          </span>
-        </div>
-        <p className="mt-1 text-xs text-gray-500">
-          粘贴会议纪要、需求片段或待办清单，模型会解析为结构化任务；预览无误后写入本项目，列表与甘特等视图将随数据刷新一并更新。
-          需在 .env 配置 OPENROUTER_API_KEY。
-        </p>
-        {aiNotice ? (
-          <p className="mt-2 text-xs text-green-700">{aiNotice}</p>
-        ) : null}
-        <textarea
-          className="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
-          rows={5}
-          placeholder="粘贴待分析文本（至少约 10 个字）…"
-          value={aiText}
-          disabled={aiLoading || aiApplyLoading}
-          onChange={(e) => {
-            setAiText(e.target.value);
-            setAiNotice(null);
-          }}
-        />
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={aiLoading || aiApplyLoading || aiText.trim().length < 10}
-            className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
-            onClick={async () => {
-              setAiLoading(true);
-              setAiNotice(null);
-              setSaveError(null);
-              try {
-                const res = await fetch(`/api/projects/${projectId}/ai/analyze`, {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ text: aiText, apply: false }),
-                });
-                const j = await res.json();
-                if (!res.ok) {
-                  setSaveError(typeof j.error === "string" ? j.error : "分析失败");
-                  setAiPreview(null);
-                  return;
+        {view === "ai" && (
+          <section className="rounded-xl border border-gray-200 bg-gradient-to-b from-gray-50/80 to-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-800">
+                <Sparkles className="h-4 w-4 text-red-600" />
+                AI 文本分析（OpenRouter）
+                <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-normal text-gray-600">
+                  看板 / 列表 / 甘特等同源同步
+                </span>
+              </div>
+              {openRouterStatus ? (
+                openRouterStatus.configured ? (
+                  <span
+                    className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-xs text-green-800"
+                    title={
+                      openRouterStatus.effectiveHttpReferer != null &&
+                      openRouterStatus.effectiveHttpReferer !== ""
+                        ? `HTTP-Referer（发往 OpenRouter）: ${openRouterStatus.effectiveHttpReferer}`
+                        : openRouterStatus.omitAttribution
+                          ? "未发送 HTTP-Referer（OPENROUTER_OMIT_ATTRIBUTION）"
+                          : "服务端已配置 OPENROUTER_API_KEY"
+                    }
+                  >
+                    OpenRouter 已就绪 · {openRouterStatus.model}
+                  </span>
+                ) : (
+                  <span
+                    className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900"
+                    title="请在环境变量中设置 OPENROUTER_API_KEY"
+                  >
+                    未检测到 API Key
+                  </span>
+                )
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  检查连接…
+                </span>
+              )}
+            </div>
+            {openRouterStatus?.configured && openRouterStatus.refererSource === "default_localhost" ? (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-950">
+                当前服务端发往 OpenRouter 的 HTTP-Referer 为默认{" "}
+                <code className="rounded bg-amber-100/80 px-0.5">localhost</code>
+                。若在 Vercel 等环境仍用此默认值，可能与「在其它网站同一模型可用」不一致；请设置{" "}
+                <code className="rounded bg-amber-100/80 px-0.5">NEXT_PUBLIC_APP_URL</code> 或{" "}
+                <code className="rounded bg-amber-100/80 px-0.5">OPENROUTER_HTTP_REFERER</code>{" "}
+                为你的线上 https 根地址。
+              </p>
+            ) : null}
+            {openRouterStatus?.configured && openRouterStatus.omitAttribution ? (
+              <p className="mt-2 text-[11px] text-gray-600">
+                已开启 OPENROUTER_OMIT_ATTRIBUTION：请求不附带 HTTP-Referer / X-Title（仅建议用于排查）。
+              </p>
+            ) : null}
+            <p className="mt-2 text-xs text-gray-500">
+              粘贴会议纪要、需求片段或待办清单；解析结果与<strong>任务详情侧栏</strong>字段一一对应：任务名称、任务内容、负责人与协助人（支持姓名或邮箱）、当前状态、开始/截止日期、优先级、甘特进度（0–100%）。
+              点击「预览解析结果」后在下方表格核对，再「确认写入项目」——写入后会自动打开<strong>第一条</strong>任务详情便于核对。
+              需在环境变量中设置 <code className="rounded bg-gray-100 px-0.5">OPENROUTER_API_KEY</code>（本机
+              <code className="rounded bg-gray-100 px-0.5">.env</code>，Vercel 在 Settings → Environment
+              Variables，改后需 Redeploy）；未配置时接口会返回 503。
+            </p>
+            {aiNotice ? (
+              <p className="mt-2 text-xs text-green-700">{aiNotice}</p>
+            ) : null}
+            <textarea
+              className="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
+              rows={8}
+              placeholder="粘贴待分析文本（至少约 10 个字）…"
+              value={aiText}
+              disabled={aiLoading || aiApplyLoading}
+              onChange={(e) => {
+                setAiText(e.target.value);
+                setAiNotice(null);
+              }}
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={aiLoading || aiApplyLoading || aiText.trim().length < 10}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                onClick={async () => {
+                  setAiLoading(true);
+                  setAiNotice(null);
+                  setSaveError(null);
+                  try {
+                    const res = await fetch(`/api/projects/${projectId}/ai/analyze`, {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ text: aiText, apply: false }),
+                    });
+                    const j = await res.json();
+                    if (!res.ok) {
+                      setSaveError(apiErrorWithHint(j as Record<string, unknown>, "分析失败"));
+                      setAiPreview(null);
+                      return;
+                    }
+                    setAiPreview(Array.isArray(j.tasks) ? j.tasks : []);
+                  } finally {
+                    setAiLoading(false);
+                  }
+                }}
+              >
+                {aiLoading ? "分析中…" : "预览解析结果"}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  aiApplyLoading ||
+                  aiLoading ||
+                  aiText.trim().length < 10 ||
+                  !aiPreview?.length
                 }
-                setAiPreview(Array.isArray(j.tasks) ? j.tasks : []);
-              } finally {
-                setAiLoading(false);
-              }
-            }}
-          >
-            {aiLoading ? "分析中…" : "预览解析结果"}
-          </button>
-          <button
-            type="button"
-            disabled={
-              aiApplyLoading ||
-              aiLoading ||
-              aiText.trim().length < 10 ||
-              !aiPreview?.length
-            }
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
-            onClick={async () => {
-              setAiApplyLoading(true);
-              setAiNotice(null);
-              setSaveError(null);
-              try {
-                const res = await fetch(`/api/projects/${projectId}/ai/analyze`, {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ text: aiText, apply: true }),
-                });
-                const j = await res.json();
-                if (!res.ok) {
-                  setSaveError(typeof j.error === "string" ? j.error : "创建失败");
-                  return;
-                }
-                const n = typeof j.count === "number" ? j.count : j.tasks?.length ?? 0;
-                setAiNotice(`已创建 ${n} 条任务并同步到当前项目。`);
-                setAiPreview(null);
-                await load({ silent: true });
-              } finally {
-                setAiApplyLoading(false);
-              }
-            }}
-          >
-            {aiApplyLoading ? "写入中…" : "确认写入项目"}
-          </button>
-        </div>
-        {aiPreview && aiPreview.length > 0 ? (
-          <div className="mt-6 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-gray-100 bg-gray-50 text-xs text-gray-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">标题</th>
-                  <th className="px-3 py-2 font-medium">优先级</th>
-                  <th className="px-3 py-2 font-medium">状态</th>
-                  <th className="px-3 py-2 font-medium">截止</th>
-                  <th className="px-3 py-2 font-medium">说明</th>
-                </tr>
-              </thead>
-              <tbody>
-                {aiPreview.map((r, i) => (
-                  <tr key={i} className="border-b border-gray-50">
-                    <td className="px-3 py-2 font-medium text-gray-900">{r.title}</td>
-                    <td className="px-3 py-2 text-gray-600">{r.priority}</td>
-                    <td className="px-3 py-2 text-gray-600">{r.status}</td>
-                    <td className="px-3 py-2 text-gray-600 tabular-nums">
-                      {r.dueDate ? format(new Date(r.dueDate), "yyyy-MM-dd") : "—"}
-                    </td>
-                    <td className="max-w-xs truncate px-3 py-2 text-gray-500" title={r.description ?? ""}>
-                      {r.description ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </section>
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+                onClick={async () => {
+                  setAiApplyLoading(true);
+                  setAiNotice(null);
+                  setSaveError(null);
+                  try {
+                    const res = await fetch(`/api/projects/${projectId}/ai/analyze`, {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ text: aiText, apply: true }),
+                    });
+                    const j = await res.json();
+                    if (!res.ok) {
+                      setSaveError(apiErrorWithHint(j as Record<string, unknown>, "创建失败"));
+                      return;
+                    }
+                    const n = typeof j.count === "number" ? j.count : j.tasks?.length ?? 0;
+                    setAiNotice(`已创建 ${n} 条任务并同步到当前项目。`);
+                    setAiPreview(null);
+                    await load({ silent: true });
+                    const created = j.tasks;
+                    if (Array.isArray(created) && created.length > 0) {
+                      setSelected(normalizeTaskRow(created[0] as TaskRow));
+                    }
+                  } finally {
+                    setAiApplyLoading(false);
+                  }
+                }}
+              >
+                {aiApplyLoading ? "写入中…" : "确认写入项目"}
+              </button>
+            </div>
+            {aiPreview && aiPreview.length > 0 ? (
+              <div
+                ref={aiPreviewRef}
+                className="mt-6 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm"
+              >
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-gray-100 bg-gray-50 text-xs text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">任务名称</th>
+                      <th className="px-3 py-2 font-medium">负责人</th>
+                      <th className="px-3 py-2 font-medium">开始</th>
+                      <th className="px-3 py-2 font-medium">截止</th>
+                      <th className="px-3 py-2 font-medium">优先级</th>
+                      <th className="px-3 py-2 font-medium">状态</th>
+                      <th className="px-3 py-2 font-medium">进度</th>
+                      <th className="px-3 py-2 font-medium">协作人</th>
+                      <th className="px-3 py-2 font-medium">说明</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aiPreview.map((r, i) => (
+                      <tr key={i} className="border-b border-gray-50">
+                        <td className="px-3 py-2 font-medium text-gray-900">{r.title}</td>
+                        <td className="px-3 py-2 text-gray-600">
+                          {r.assignee ?
+                            r.assignee.name
+                          : r.assigneeUnresolved && r.assigneeName ?
+                            <span title="请在项目中添加该成员或改名后重新解析">{r.assigneeName}（未匹配）</span>
+                          : r.assigneeName ?
+                            r.assigneeName
+                          : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-gray-600 tabular-nums">
+                          {r.startDate ? format(new Date(r.startDate), "yyyy-MM-dd") : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-gray-600 tabular-nums">
+                          {r.dueDate ? format(new Date(r.dueDate), "yyyy-MM-dd") : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">{r.priority}</td>
+                        <td className="px-3 py-2 text-gray-600">{STATUS_LABEL[r.status] ?? r.status}</td>
+                        <td className="px-3 py-2 tabular-nums text-gray-600">
+                          {typeof r.progress === "number" ? `${Math.round(r.progress)}%` : "—"}
+                        </td>
+                        <td
+                          className="max-w-[140px] truncate px-3 py-2 text-gray-600"
+                          title={(r.assistants ?? []).map((a) => a.name).join("、")}
+                        >
+                          {(r.assistants ?? []).length ?
+                            (r.assistants ?? []).map((a) => a.name).join("、")
+                          : "—"}
+                        </td>
+                        <td className="max-w-xs truncate px-3 py-2 text-gray-500" title={r.description ?? ""}>
+                          {r.description ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </section>
+        )}
+      </main>
 
       {/* 任务侧栏 */}
       {selected && (
@@ -950,7 +1220,25 @@ export function ProjectWorkspace({
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-500">负责人</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-gray-500">负责人</label>
+                {selected.assignee && meId && selected.assignee.id !== meId ? (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
+                    onClick={() => {
+                      setDmPeer({
+                        id: selected.assignee!.id,
+                        name: selected.assignee!.name,
+                      });
+                      setDmOpen(true);
+                    }}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+                    私聊
+                  </button>
+                ) : null}
+              </div>
               <select
                 className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 value={selected.assignee?.id ?? ""}
@@ -983,28 +1271,42 @@ export function ProjectWorkspace({
                     );
                     const checked = aid.has(m.user.id);
                     return (
-                      <label
+                      <div
                         key={m.user.id}
-                        className="flex cursor-pointer items-center gap-2 text-xs text-gray-800"
+                        className="flex items-center justify-between gap-2 rounded px-0.5 py-0.5 hover:bg-white/80"
                       >
-                        <input
-                          type="checkbox"
-                          className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                          checked={checked}
-                          onChange={() => {
-                            const next = new Set(aid);
-                            if (checked) next.delete(m.user.id);
-                            else next.add(m.user.id);
-                            void patchTask(selected.id, {
-                              assistantIds: Array.from(next),
-                            });
-                          }}
-                        />
-                        <span>
-                          {m.user.name}
-                          <span className="text-gray-500"> · {m.user.email}</span>
-                        </span>
-                      </label>
+                        <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-xs text-gray-800">
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                            checked={checked}
+                            onChange={() => {
+                              const next = new Set(aid);
+                              if (checked) next.delete(m.user.id);
+                              else next.add(m.user.id);
+                              void patchTask(selected.id, {
+                                assistantIds: Array.from(next),
+                              });
+                            }}
+                          />
+                          <span className="truncate">
+                            {m.user.name}
+                            <span className="text-gray-500"> · {m.user.email}</span>
+                          </span>
+                        </label>
+                        {meId && m.user.id !== meId ? (
+                          <button
+                            type="button"
+                            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              setDmPeer({ id: m.user.id, name: m.user.name });
+                              setDmOpen(true);
+                            }}
+                          >
+                            私聊
+                          </button>
+                        ) : null}
+                      </div>
                     );
                   })
                 )}
@@ -1092,6 +1394,14 @@ export function ProjectWorkspace({
                 }}
               />
             </div>
+
+            <TaskChatSection
+              taskId={selected.id}
+              currentUserId={meId}
+              remotePayload={taskChatRemote}
+              onRemoteConsumed={() => setTaskChatRemote(null)}
+            />
+
             {selected.dependenciesPredecessors?.length ? (
               <div>
                 <p className="text-xs text-gray-500">前置任务</p>
@@ -1102,9 +1412,48 @@ export function ProjectWorkspace({
                 </ul>
               </div>
             ) : null}
+            <div className="border-t border-gray-200 pt-4">
+              <button
+                type="button"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-medium text-red-800 hover:bg-red-100"
+                onClick={() => {
+                  if (!confirm("确定删除该任务？此操作不可撤销。")) return;
+                  void deleteTask(selected.id);
+                }}
+              >
+                <Trash2 className="h-4 w-4 shrink-0" aria-hidden />
+                删除任务
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      <CreateTaskModal
+        open={createTaskOpen}
+        onClose={() => setCreateTaskOpen(false)}
+        projectId={projectId}
+        members={projectMembers}
+        onCreated={(raw) => {
+          const row = normalizeTaskRow(raw as TaskRow);
+          setSelected(row);
+          void load({ silent: true });
+        }}
+        onRequestError={(msg) => setSaveError(msg)}
+      />
+
+      <DirectChatDrawer
+        open={dmOpen}
+        onClose={() => {
+          setDmOpen(false);
+          setDmPeer(null);
+        }}
+        projectId={projectId}
+        peer={dmPeer}
+        currentUserId={meId}
+        dmPush={dmPush}
+        onDmPushConsumed={clearDmPush}
+      />
     </div>
   );
 }

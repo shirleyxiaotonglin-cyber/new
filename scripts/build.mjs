@@ -29,6 +29,34 @@ function sleepSync(seconds) {
   }
 }
 
+/** libpq：延长连接建立超时（秒），便于 Neon 冷启动 */
+function withConnectTimeout(url, seconds = 120) {
+  const u = url.trim();
+  if (/[?&]connect_timeout=/i.test(u)) return u;
+  const sep = u.includes("?") ? "&" : "?";
+  return `${u}${sep}connect_timeout=${seconds}`;
+}
+
+/**
+ * Neon 复制串常带 channel_binding=require；少数环境下与 Prisma 迁移抢 advisory lock 并存异常。
+ * 迁移子进程内去掉该参数（保留 sslmode=require），与应用运行时连接串无关。
+ */
+function stripChannelBindingFromUrl(url) {
+  const raw = url.trim();
+  if (!/[?&]channel_binding=/i.test(raw)) return raw;
+  try {
+    const normalized = raw.startsWith("postgresql:") ? raw.replace(/^postgresql:/i, "http:") : raw;
+    const u = new URL(normalized);
+    u.searchParams.delete("channel_binding");
+    return u.toString().replace(/^http:/i, "postgresql:");
+  } catch {
+    return raw
+      .replace(/[&?]channel_binding=[^&]*/gi, "")
+      .replace(/\?&/g, "?")
+      .replace(/\?$/g, "");
+  }
+}
+
 /**
  * 迁移子进程内将 DATABASE_URL 与 DIRECT_URL 均设为直连串。
  * 避免 Prisma CLI 在部分环境下仍以主 url（池化）建连，导致 …-pooler… 上 advisory lock 超时。
@@ -41,11 +69,12 @@ function migrateDeployOnce(migrateEnv) {
   });
 }
 
-function migrateDeployWithRetries(directConnectionUrl, maxAttempts = 3) {
+function migrateDeployWithRetries(directConnectionUrl, maxAttempts = 8) {
+  const urlForMigrate = withConnectTimeout(stripChannelBindingFromUrl(directConnectionUrl));
   const migrateEnv = {
     ...process.env,
-    DATABASE_URL: directConnectionUrl,
-    DIRECT_URL: directConnectionUrl,
+    DATABASE_URL: urlForMigrate,
+    DIRECT_URL: urlForMigrate,
   };
   console.warn(
     "\n[build] prisma migrate deploy：迁移步骤已强制使用 DIRECT_URL（直连），不在此步骤使用池化 DATABASE_URL。\n",
@@ -57,9 +86,10 @@ function migrateDeployWithRetries(directConnectionUrl, maxAttempts = 3) {
       return;
     } catch {
       if (attempt < maxAttempts) {
-        const waitSec = 5 * attempt;
+        /* Prisma 内部抢 advisory lock 默认约 10s；并发部署或 Neon 唤醒不足时需更长间隔 */
+        const waitSec = Math.min(15 + attempt * 8, 90);
         console.warn(
-          `\n[build] prisma migrate deploy 第 ${attempt} 次失败（可能是 Neon 冷启动或瞬时锁），${waitSec}s 后重试 (${attempt + 1}/${maxAttempts})…\n`,
+          `\n[build] prisma migrate deploy 第 ${attempt} 次失败（可能是并发迁移抢锁 / Neon 冷启动），${waitSec}s 后重试 (${attempt + 1}/${maxAttempts})…\n`,
         );
         sleepSync(waitSec);
       }
@@ -80,8 +110,27 @@ function explainNeonDirectUrl() {
 `);
 }
 
+function explainAdvisoryLockFailure() {
+  console.error(`
+当前已走直连仍报 P1002（advisory lock / 超时）时，可按下面排查：
+
+  1) **并发构建**：多个 Vercel Deployment 同时对同一库跑 migrate，会互相抢锁。请到 Vercel → Deployments，
+     取消排队中的重复构建，只保留当前一条；或关闭「并发部署同一分支」类选项后再试。
+  2) **Neon 休眠**：在 Neon 控制台打开该项目/SQL Editor 执行一次 SELECT 1，唤醒计算后再 Redeploy。
+  3) **本地跑一次迁移**：把 Neon 直连串设为 DATABASE_URL 与 DIRECT_URL（或仅用直连），在本机执行：
+       npx prisma migrate deploy
+     成功后再推送触发 Vercel（此时迁移通常已是 applied，构建会很快通过）。
+  4) **临时跳过构建迁移**：设 SKIP_PRISMA_MIGRATE=1 先让站点上线，再在本地或 CI 对同一库执行 migrate deploy。
+
+  5) **连接串里的 channel_binding=require**：若从 Neon 整串复制，可在 .env 里删掉该参数后再执行 migrate（仅去掉参数，保留 sslmode=require）。
+
+构建阶段可加环境变量 SKIP_NEON_WAKE_SLEEP=1 跳过下面的等待（仅调试用）。
+`);
+}
+
 try {
   run("npx prisma generate");
+  run("node scripts/sync-static-site.mjs");
 
   const skipMigrate = process.env.SKIP_PRISMA_MIGRATE === "1";
 
@@ -142,19 +191,20 @@ Neon 在 Vercel 上应使用两条不同连接串：
   }
 
   if (!skipMigrate) {
+    const wakeSleep =
+      process.env.SKIP_NEON_WAKE_SLEEP === "1" ? 0 : process.env.VERCEL ? 28 : 0;
+    if (wakeSleep > 0) {
+      console.warn(
+        `\n[build] 检测到 VERCEL：等待 ${wakeSleep} 秒以便 Neon 计算唤醒后再跑 migrate（可用 SKIP_NEON_WAKE_SLEEP=1 跳过）。\n`,
+      );
+      sleepSync(wakeSleep);
+    }
+
     try {
-      migrateDeployWithRetries(directUrl, 3);
+      migrateDeployWithRetries(directUrl, 8);
     } catch {
       console.warn("\n[build] prisma migrate deploy 失败。\n");
-      if (connectionLooksLikePooler(dbUrl)) {
-        console.error(
-          "[build] 当前 DATABASE_URL 含 pooler；若日志里迁移仍连到 …-pooler…，说明 DIRECT_URL 未生效或为池地址。\n",
-        );
-        explainNeonDirectUrl();
-      }
-      console.warn(
-        "可临时设 SKIP_PRISMA_MIGRATE=1 仅通过构建，再在本地用 Direct 串执行：npx prisma migrate deploy\n",
-      );
+      explainAdvisoryLockFailure();
       process.exit(1);
     }
   } else {

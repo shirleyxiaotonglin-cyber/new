@@ -15,6 +15,7 @@
     "docker:db": "docker compose up -d",
     "dev:clean": "npm run clean && npm run dev",
     "static:serve": "npx --yes serve static-site -l 5500",
+    "static:sync": "node scripts/sync-static-site.mjs",
     "db:seed": "tsx prisma/seed.ts",
     "db:push": "prisma db push",
     "postinstall": "prisma generate"
