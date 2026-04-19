@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { Camera, Loader2, Save } from "lucide-react";
+import { compressAvatarForUpload } from "@/lib/compress-avatar-client";
 
 export type ProfileSettingsFormProps = {
   orgId: string;
@@ -46,8 +47,14 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
       setUploading(true);
       setMessage(null);
       try {
+        let toUpload = file;
+        try {
+          toUpload = await compressAvatarForUpload(file);
+        } catch {
+          /* 压缩失败时仍尝试原图（小图或可解码格式） */
+        }
         const fd = new FormData();
-        fd.append("file", file);
+        fd.append("file", toUpload);
         const res = await fetch("/api/me/avatar", {
           method: "POST",
           body: fd,
