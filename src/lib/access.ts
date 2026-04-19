@@ -29,3 +29,24 @@ export function canEditTask(orgRole: string, projectRole: string) {
     projectRole === ProjectMemberRole.MEMBER
   );
 }
+
+/** 与任务编辑权限一致：可上传交付物 */
+export function canUploadDeliverable(orgRole: string, projectRole: string) {
+  return canEditTask(orgRole, projectRole);
+}
+
+/** 删除：本人可删自己的；项目负责人/管理员可删任意 */
+export function canDeleteDeliverable(
+  orgRole: string,
+  projectRole: string,
+  uploaderId: string,
+  userId: string,
+) {
+  if (uploaderId === userId) return canEditTask(orgRole, projectRole);
+  return (
+    orgRole === OrgRole.OWNER ||
+    orgRole === OrgRole.ADMIN ||
+    projectRole === ProjectMemberRole.OWNER ||
+    projectRole === ProjectMemberRole.ADMIN
+  );
+}

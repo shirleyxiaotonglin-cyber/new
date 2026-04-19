@@ -28,6 +28,7 @@ import {
   Check,
   Columns3,
   Copy,
+  FolderOpen,
   GanttChart as GanttIcon,
   LayoutList,
   Loader2,
@@ -49,6 +50,7 @@ import { GanttChartView } from "@/components/project/GanttChartView";
 import { useProjectRealtime } from "@/hooks/useProjectRealtime";
 import { PeerContactModal, type PeerProfile } from "@/components/chat/PeerContactModal";
 import { TaskChatSection } from "@/components/chat/TaskChatSection";
+import { TaskDeliverablesSection } from "@/components/project/TaskDeliverablesSection";
 
 type TaskRow = {
   id: string;
@@ -703,6 +705,13 @@ export function ProjectWorkspace({
               <Plus className="h-4 w-4" />
               新建任务
             </button>
+            <Link
+              href={`/org/${orgId}/project/${projectId}/assets`}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+            >
+              <FolderOpen className="h-4 w-4" aria-hidden />
+              资源中心
+            </Link>
             <nav className="flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1">
             {(
               [
@@ -1467,6 +1476,8 @@ export function ProjectWorkspace({
               remotePayload={taskChatRemote}
               onRemoteConsumed={() => setTaskChatRemote(null)}
             />
+
+            <TaskDeliverablesSection taskId={selected.id} currentUserId={meId} />
 
             {selected.dependenciesPredecessors?.length ? (
               <div>

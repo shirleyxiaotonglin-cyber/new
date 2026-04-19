@@ -327,9 +327,13 @@ model Attachment {
   id          String @id @default(cuid())
   taskId      String
   fileAssetId String
+  /// 交付物分类：DOCUMENT | IMAGE | DESIGN | CODE | ARCHIVE | VIDEO | OTHER（可与 MIME 推断一致）
+  category    String?
 
   task      Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   fileAsset FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
 }
 
 model FileAsset {
