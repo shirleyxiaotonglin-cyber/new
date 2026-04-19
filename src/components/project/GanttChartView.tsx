@@ -26,6 +26,26 @@ function startOfDay(d: Date): Date {
   return x;
 }
 
+/** API 常为 `YYYY-MM-DD`；用本地年月日构造，避免被解析成 UTC 午夜导致日历错位 */
+function parseTaskCalendarDate(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
+  const head = raw.slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(head);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    return startOfDay(new Date(y, mo, d));
+  }
+  return startOfDay(new Date(raw));
+}
+
+/** 左侧表头两行 + 右侧月/日行：统一高度，避免左右首行错位 */
+const HEADER_MONTH_ROW_H = "h-9";
+const HEADER_DAY_ROW_H = "h-9";
+/** 左侧任务行与右侧轨道行同高（须与右侧 h-[42px] 一致） */
+const BODY_ROW_H = "h-[42px]";
+
 /** 自然日跨度，支持 0.5 日粒度展示 */
 export function calendarDaySpan(start: Date, end: Date): number {
   const s = startOfDay(start).getTime();
@@ -88,13 +108,13 @@ export function GanttChartView({ tasks, onRowClick }: Props) {
       let start: Date;
       let end: Date;
       if (t.startDate && t.dueDate) {
-        start = new Date(t.startDate);
-        end = new Date(t.dueDate);
+        start = parseTaskCalendarDate(t.startDate) ?? anchor;
+        end = parseTaskCalendarDate(t.dueDate) ?? start;
       } else if (t.dueDate) {
-        end = new Date(t.dueDate);
+        end = parseTaskCalendarDate(t.dueDate) ?? anchor;
         start = new Date(end.getTime() - 3 * DAY_MS);
       } else if (t.startDate) {
-        start = new Date(t.startDate);
+        start = parseTaskCalendarDate(t.startDate) ?? anchor;
         end = new Date(start.getTime() + 3 * DAY_MS);
       } else {
         start = new Date(anchor);
@@ -175,16 +195,35 @@ export function GanttChartView({ tasks, onRowClick }: Props) {
           <div
             className="sticky left-0 z-[25] flex w-[min(100%,440px)] shrink-0 flex-col border-r border-slate-200 bg-white shadow-[4px_0_12px_rgba(15,23,42,0.06)] sm:w-[440px]"
           >
-            <div className="sticky top-0 z-[35] grid grid-cols-[40px_1fr_88px_88px_72px] border-b border-slate-200 bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-              <div className="flex items-end border-r border-slate-200 px-1.5 py-2 text-center">ID</div>
-              <div className="flex items-end border-r border-slate-200 px-2 py-2">任务名称</div>
-              <div className="flex items-end justify-center border-r border-slate-200 px-1 py-2">
-                开始日期
+            <div className="sticky top-0 z-[35] flex flex-col border-b border-slate-200 bg-slate-100">
+              <div
+                className={cn(
+                  "grid grid-cols-[40px_1fr_88px_88px_72px] border-b border-slate-200",
+                  HEADER_MONTH_ROW_H,
+                )}
+              >
+                <div className="col-span-5 flex items-center justify-center text-[11px] font-medium text-slate-500">
+                  任务
+                </div>
               </div>
-              <div className="flex items-end justify-center border-r border-slate-200 px-1 py-2">
-                结束日期
+              <div
+                className={cn(
+                  "grid grid-cols-[40px_1fr_88px_88px_72px] text-[11px] font-semibold uppercase tracking-wide text-slate-600",
+                  HEADER_DAY_ROW_H,
+                )}
+              >
+                <div className="flex items-center justify-center border-r border-slate-200 px-1 text-center">
+                  ID
+                </div>
+                <div className="flex items-center border-r border-slate-200 px-2">任务名称</div>
+                <div className="flex items-center justify-center border-r border-slate-200 px-1">
+                  开始日期
+                </div>
+                <div className="flex items-center justify-center border-r border-slate-200 px-1">
+                  结束日期
+                </div>
+                <div className="flex items-center justify-center px-1">持续</div>
               </div>
-              <div className="flex items-end justify-center px-1 py-2">持续</div>
             </div>
 
             {rows.map(({ task, start, end, duration }, idx) => (
@@ -193,23 +232,25 @@ export function GanttChartView({ tasks, onRowClick }: Props) {
                 type="button"
                 onClick={() => onRowClick?.(task)}
                 className={cn(
-                  "grid w-full grid-cols-[40px_1fr_88px_88px_72px] border-b border-slate-100 text-left text-[12px] transition hover:bg-blue-50/80",
+                  "grid w-full grid-cols-[40px_1fr_88px_88px_72px] items-stretch border-b border-slate-100 text-left text-[12px] leading-tight transition hover:bg-blue-50/80",
+                  BODY_ROW_H,
+                  "min-h-0",
                   idx % 2 === 1 ? "bg-slate-50/90" : "bg-white",
                 )}
               >
-                <div className="flex items-center justify-center border-r border-slate-100 px-1 font-mono text-slate-500 tabular-nums">
+                <div className="flex h-full min-h-0 items-center justify-center border-r border-slate-100 px-1 font-mono text-slate-500 tabular-nums">
                   {idx + 1}
                 </div>
-                <div className="truncate border-r border-slate-100 px-2 py-2 font-medium text-slate-900">
+                <div className="flex h-full min-h-0 items-center truncate border-r border-slate-100 px-2 font-medium text-slate-900">
                   {task.title}
                 </div>
-                <div className="flex items-center justify-center border-r border-slate-100 px-1 text-center text-slate-700 tabular-nums">
+                <div className="flex h-full min-h-0 items-center justify-center border-r border-slate-100 px-1 text-center text-slate-700 tabular-nums">
                   {format(startOfDay(start), "yyyy-MM-dd")}
                 </div>
-                <div className="flex items-center justify-center border-r border-slate-100 px-1 text-center text-slate-700 tabular-nums">
+                <div className="flex h-full min-h-0 items-center justify-center border-r border-slate-100 px-1 text-center text-slate-700 tabular-nums">
                   {format(startOfDay(end), "yyyy-MM-dd")}
                 </div>
-                <div className="flex items-center justify-end px-2 py-2 text-slate-600 tabular-nums">
+                <div className="flex h-full min-h-0 items-center justify-end px-2 text-slate-600 tabular-nums">
                   {duration.toFixed(1)} 日
                 </div>
               </button>
@@ -219,23 +260,23 @@ export function GanttChartView({ tasks, onRowClick }: Props) {
           {/* 右侧时间轴 */}
           <div className="min-w-0 flex flex-col" style={{ width: timelineWidth }}>
             <div className="sticky top-0 z-[30] bg-slate-100 shadow-sm">
-              <div className="flex border-b border-slate-200">
+              <div className={cn("flex border-b border-slate-200", HEADER_MONTH_ROW_H)}>
                 {monthSegments.map((s, mi) => (
                   <div
                     key={`${s.key}-${mi}`}
                     style={{ width: s.span * pxPerDay, minWidth: s.span * pxPerDay }}
-                    className="border-r border-slate-200 px-1 py-1 text-center text-[11px] font-medium text-slate-700 last:border-r-0"
+                    className="flex items-center justify-center border-r border-slate-200 px-1 text-center text-[11px] font-medium text-slate-700 last:border-r-0"
                   >
                     {s.label}
                   </div>
                 ))}
               </div>
-              <div className="flex border-b border-slate-200">
+              <div className={cn("flex border-b border-slate-200", HEADER_DAY_ROW_H)}>
                 {days.map((d) => (
                   <div
                     key={d.getTime()}
                     style={{ width: pxPerDay, minWidth: pxPerDay }}
-                    className="border-r border-slate-100 py-1 text-center text-[10px] text-slate-500 last:border-r-0"
+                    className="flex items-center justify-center border-r border-slate-100 text-center text-[10px] text-slate-500 last:border-r-0"
                   >
                     {d.getDate()}
                   </div>
@@ -255,7 +296,8 @@ export function GanttChartView({ tasks, onRowClick }: Props) {
                 <div
                   key={task.id}
                   className={cn(
-                    "relative h-[42px] flex-shrink-0 border-b border-slate-100",
+                    "relative flex-shrink-0 border-b border-slate-100",
+                    BODY_ROW_H,
                     idx % 2 === 1 ? "bg-slate-50/90" : "bg-white",
                   )}
                   style={{ width: timelineWidth }}
