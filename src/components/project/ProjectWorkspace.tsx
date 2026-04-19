@@ -53,6 +53,7 @@ import { useProjectRealtime } from "@/hooks/useProjectRealtime";
 import { PeerContactModal, type PeerProfile } from "@/components/chat/PeerContactModal";
 import { TaskChatSection } from "@/components/chat/TaskChatSection";
 import { TaskDeliverablesSection } from "@/components/project/TaskDeliverablesSection";
+import { AiAttributionNote } from "@/components/ai/AiAttributionNote";
 
 type TaskRow = {
   id: string;
@@ -1056,6 +1057,7 @@ export function ProjectWorkspace({
               粘贴会议纪要、需求片段或待办清单，系统尝试识别任务名称、任务内容、负责人与协助人（姓名或邮箱）、状态、起止日期、优先级与进度；解析结果可在表格中预览，确认后写入本项目。
               写入成功后会自动打开<strong>第一条</strong>新任务便于核对。
             </p>
+            {openRouterStatus ? <AiAttributionNote model={openRouterStatus.model} /> : null}
             {aiNotice ? (
               <p className="mt-2 text-xs text-green-700">{aiNotice}</p>
             ) : null}

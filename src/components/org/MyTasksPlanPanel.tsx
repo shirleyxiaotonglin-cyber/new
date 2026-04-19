@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, CalendarRange, Loader2, Sparkles } from "lucide-react";
+import { AiAttributionNote } from "@/components/ai/AiAttributionNote";
 
 type PlanItem = {
   taskId?: string | null;
@@ -111,11 +112,14 @@ export function MyTasksPlanPanel({
             根据与您相关的任务列表，自动生成<strong>今日安排</strong>与<strong>本周节奏</strong>建议，便于安排优先级与时间块。
           </p>
           {aiStatus ? (
-            <p className="mt-2 text-xs text-gray-500">
-              {aiStatus.configured ?
-                "智能助手已就绪，可直接点击下方按钮生成。"
-              : "智能助手尚未开通，按钮暂不可用。如需使用请联系管理员。"}
-            </p>
+            <>
+              <p className="mt-2 text-xs text-gray-500">
+                {aiStatus.configured ?
+                  "智能助手已就绪，可直接点击下方按钮生成。"
+                : "智能助手尚未开通，按钮暂不可用。如需使用请联系管理员。"}
+              </p>
+              <AiAttributionNote model={aiStatus.model} />
+            </>
           ) : (
             <p className="mt-2 text-xs text-gray-400">正在检测…</p>
           )}

@@ -31,7 +31,11 @@ export default async function Home() {
     { icon: Users, title: "角色与协作", desc: "Owner / Admin / Member / Guest，评论与 @ 提醒。" },
     { icon: Lock, title: "安全与审计", desc: "RBAC、操作审计日志，可接多租户 SaaS。" },
     { icon: BarChart3, title: "报表与负载", desc: "完成率、延期风险、工作量分布。" },
-    { icon: Sparkles, title: "AI 与自动化", desc: "PRD 拆解、规则引擎（可接 LLM）。" },
+    {
+      icon: Sparkles,
+      title: "智能助手",
+      desc: "任务解析、计划与工作报告草稿；通过 OpenRouter 接入大语言模型，所用模型在各功能页展示。",
+    },
   ];
 
   return (

@@ -12,6 +12,7 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
+import { AiAttributionNote } from "@/components/ai/AiAttributionNote";
 
 type ReportData = {
   reportTitle?: string;
@@ -107,11 +108,14 @@ export function WorkReportsAiPanel({
               基于您当前任务数据，梳理进度与完成情况，一键生成<strong>今日 / 本周 / 本月</strong>文字报告草稿，可在生成结果上继续修改后对外使用。
             </p>
             {aiStatus ? (
-              <p className="mt-2 text-xs text-gray-500">
-                {aiStatus.configured ?
-                  "智能助手已就绪，可直接点击右侧按钮生成。"
-                : "智能助手尚未开通，按钮暂不可用。如需使用请联系管理员。"}
-              </p>
+              <>
+                <p className="mt-2 text-xs text-gray-500">
+                  {aiStatus.configured ?
+                    "智能助手已就绪，可直接点击右侧按钮生成。"
+                  : "智能助手尚未开通，按钮暂不可用。如需使用请联系管理员。"}
+                </p>
+                <AiAttributionNote model={aiStatus.model} />
+              </>
             ) : (
               <p className="mt-2 text-xs text-gray-400">正在检测…</p>
             )}
