@@ -1,7 +1,14 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { format } from "date-fns";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { MessagesCenterClient } from "@/components/org/MessagesCenterClient";
+
+function MessagesFallback() {
+  return (
+    <div className="mx-auto mt-12 max-w-6xl text-center text-sm text-gray-500">加载消息中心…</div>
+  );
+}
 
 export default async function MessagesPage({
   params,
@@ -23,29 +30,31 @@ export default async function MessagesPage({
     take: 50,
   });
 
+  const initialNotifications = list.map((n) => ({
+    id: n.id,
+    title: n.title,
+    body: n.body,
+    read: n.read,
+    createdAt: n.createdAt.toISOString(),
+  }));
+
   return (
     <div className="min-h-screen bg-white px-4 py-8 sm:px-8">
       <header className="border-b border-gray-200 pb-6">
         <p className="text-xs font-semibold uppercase tracking-wider text-red-600">消息中心</p>
-        <h1 className="mt-2 text-2xl font-semibold text-gray-900">通知与提醒</h1>
+        <h1 className="mt-2 text-2xl font-semibold text-gray-900">私信与通知</h1>
+        <p className="mt-2 max-w-2xl text-sm text-gray-600">
+          与组织成员的一对一聊天保存在「私信」；系统通知在「通知与提醒」。从项目任务中联系负责人时，将跳转至此发送消息。
+        </p>
       </header>
-      <ul className="mx-auto mt-8 max-w-3xl space-y-3">
-        {list.map((n) => (
-          <li
-            key={n.id}
-            className={`rounded-xl border px-4 py-3 ${n.read ? "border-gray-100 bg-gray-50" : "border-red-100 bg-red-50/50"}`}
-          >
-            <p className="font-medium text-gray-900">{n.title}</p>
-            {n.body && <p className="mt-1 text-sm text-gray-600">{n.body}</p>}
-            <p className="mt-2 text-xs text-gray-400">
-              {format(n.createdAt, "yyyy-MM-dd HH:mm")}
-            </p>
-          </li>
-        ))}
-      </ul>
-      {list.length === 0 && (
-        <p className="mt-12 text-center text-gray-500">暂无消息。</p>
-      )}
+
+      <Suspense fallback={<MessagesFallback />}>
+        <MessagesCenterClient
+          orgId={orgId}
+          currentUserId={session.sub}
+          initialNotifications={initialNotifications}
+        />
+      </Suspense>
     </div>
   );
 }

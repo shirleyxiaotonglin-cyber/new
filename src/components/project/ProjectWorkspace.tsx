@@ -31,8 +31,8 @@ import {
   GanttChart as GanttIcon,
   LayoutList,
   Loader2,
-  MessageCircle,
   Pencil,
+  User,
   Plus,
   Save,
   Search,
@@ -47,13 +47,8 @@ import { TaskStatus, TaskPriority } from "@/lib/constants";
 import { CreateTaskModal } from "@/components/project/CreateTaskModal";
 import { GanttChartView } from "@/components/project/GanttChartView";
 import { useProjectRealtime } from "@/hooks/useProjectRealtime";
-import {
-  DirectChatDrawer,
-  type ChatPeer,
-  type DmPushPayload,
-} from "@/components/chat/DirectChatDrawer";
+import { PeerContactModal, type PeerProfile } from "@/components/chat/PeerContactModal";
 import { TaskChatSection } from "@/components/chat/TaskChatSection";
-import { useUserRealtime, type DirectMessageEvent } from "@/hooks/useUserRealtime";
 
 type TaskRow = {
   id: string;
@@ -64,14 +59,39 @@ type TaskRow = {
   dueDate: string | null;
   startDate: string | null;
   progress?: number | null;
-  assignee: { id: string; name: string } | null;
+  assignee: {
+    id: string;
+    name: string;
+    email?: string | null;
+    avatarUrl?: string | null;
+  } | null;
   tags: { tag: { id: string; name: string; color: string } }[];
   dependenciesPredecessors: {
     predecessor: { id: string; title: string; status: string };
   }[];
   subtasks: { id: string; title: string; status: string }[];
-  assistants?: { user: { id: string; name: string; email?: string | null } }[];
+  assistants?: {
+    user: { id: string; name: string; email?: string | null; avatarUrl?: string | null };
+  }[];
 };
+
+type ProjectMemberOption = {
+  userId: string;
+  user: { id: string; name: string; email: string; avatarUrl?: string | null };
+};
+
+function buildPeerProfileFromAssignee(
+  assignee: NonNullable<TaskRow["assignee"]>,
+  members: ProjectMemberOption[],
+): PeerProfile {
+  const row = members.find((m) => m.user.id === assignee.id);
+  return {
+    id: assignee.id,
+    name: assignee.name,
+    email: row?.user.email ?? assignee.email ?? undefined,
+    avatarUrl: row?.user.avatarUrl ?? assignee.avatarUrl ?? undefined,
+  };
+}
 
 function apiErrorWithHint(j: Record<string, unknown>, fallback: string): string {
   const err = typeof j.error === "string" ? j.error : fallback;
@@ -90,11 +110,6 @@ function normalizeTaskRow(t: TaskRow): TaskRow {
     tags: Array.isArray(t.tags) ? t.tags : [],
   };
 }
-
-type ProjectMemberOption = {
-  userId: string;
-  user: { id: string; name: string; email: string };
-};
 
 type View =
   | "board"
@@ -293,9 +308,8 @@ export function ProjectWorkspace({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [projectIdCopied, setProjectIdCopied] = useState(false);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
-  /** 私聊抽屉 */
-  const [dmOpen, setDmOpen] = useState(false);
-  const [dmPeer, setDmPeer] = useState<ChatPeer | null>(null);
+  /** 负责人 / 协助人资料弹层 → 跳转消息中心 */
+  const [contactUser, setContactUser] = useState<PeerProfile | null>(null);
   /** 任务讨论 SSE 透传 */
   const [taskChatRemote, setTaskChatRemote] = useState<{
     taskId: string;
@@ -307,10 +321,6 @@ export function ProjectWorkspace({
       sender: { id: string; name: string; avatarUrl: string | null };
     };
   } | null>(null);
-  /** 私聊 SSE：进入项目即可收推送（无需先打开抽屉） */
-  const [dmPush, setDmPush] = useState<DmPushPayload | null>(null);
-  const clearDmPush = useCallback(() => setDmPush(null), []);
-
   /** 标题/描述防抖写入，避免未失焦就刷新导致未保存 */
   const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const descSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -441,19 +451,6 @@ export function ProjectWorkspace({
     enabled: !loading && !loadError,
     onTaskChat: (p) => setTaskChatRemote(p),
   });
-
-  useUserRealtime(!loading && !loadError && !!meId, (ev) => {
-    if (ev.type !== "direct_message") return;
-    const d = ev as DirectMessageEvent;
-    setDmPush({
-      threadId: d.threadId,
-      message: d.message,
-    });
-  });
-
-  useEffect(() => {
-    setDmPush(null);
-  }, [dmPeer?.id]);
 
   useEffect(() => {
     setSelected((prev) => {
@@ -853,12 +850,11 @@ export function ProjectWorkspace({
                               type="button"
                               className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
                               onClick={() => {
-                                setDmPeer({ id: t.assignee!.id, name: t.assignee!.name });
-                                setDmOpen(true);
+                                setContactUser(buildPeerProfileFromAssignee(t.assignee!, projectMembers));
                               }}
                             >
-                              <MessageCircle className="mr-0.5 inline h-3 w-3" aria-hidden />
-                              私聊
+                              <User className="mr-0.5 inline h-3 w-3" aria-hidden />
+                              查看资料
                             </button>
                           ) : null}
                         </div>
@@ -1295,15 +1291,13 @@ export function ProjectWorkspace({
                     type="button"
                     className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
                     onClick={() => {
-                      setDmPeer({
-                        id: selected.assignee!.id,
-                        name: selected.assignee!.name,
-                      });
-                      setDmOpen(true);
+                      setContactUser(
+                        buildPeerProfileFromAssignee(selected.assignee!, projectMembers),
+                      );
                     }}
                   >
-                    <MessageCircle className="h-3.5 w-3.5" aria-hidden />
-                    私聊
+                    <User className="h-3.5 w-3.5" aria-hidden />
+                    查看资料
                   </button>
                 ) : null}
               </div>
@@ -1367,11 +1361,15 @@ export function ProjectWorkspace({
                             type="button"
                             className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
                             onClick={() => {
-                              setDmPeer({ id: m.user.id, name: m.user.name });
-                              setDmOpen(true);
+                              setContactUser({
+                                id: m.user.id,
+                                name: m.user.name,
+                                email: m.user.email,
+                                avatarUrl: m.user.avatarUrl ?? undefined,
+                              });
                             }}
                           >
-                            私聊
+                            查看资料
                           </button>
                         ) : null}
                       </div>
@@ -1529,17 +1527,12 @@ export function ProjectWorkspace({
         onRequestError={(msg) => setSaveError(msg)}
       />
 
-      <DirectChatDrawer
-        open={dmOpen}
-        onClose={() => {
-          setDmOpen(false);
-          setDmPeer(null);
-        }}
+      <PeerContactModal
+        open={contactUser !== null}
+        onClose={() => setContactUser(null)}
+        user={contactUser}
+        orgId={orgId}
         projectId={projectId}
-        peer={dmPeer}
-        currentUserId={meId}
-        dmPush={dmPush}
-        onDmPushConsumed={clearDmPush}
       />
     </div>
   );
