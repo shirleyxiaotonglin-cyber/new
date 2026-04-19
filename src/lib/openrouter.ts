@@ -5,7 +5,11 @@
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
-export type OpenRouterErrorCode = "MISSING_API_KEY" | "HTTP_ERROR" | "PARSE_ERROR";
+export type OpenRouterErrorCode =
+  | "MISSING_API_KEY"
+  | "HTTP_ERROR"
+  | "PARSE_ERROR"
+  | "FETCH_FAILED";
 
 /** 实际用于 HTTP-Referer 的来源（与浏览器里「其他网站」可能不同，可影响上游策略） */
 export type OpenRouterRefererSource =
@@ -129,6 +133,35 @@ function moderationFromMeta(meta: Record<string, unknown> | undefined): {
   };
 }
 
+function assertOpenRouterSuccessEnvelope(
+  text: string,
+  modelUsed: string,
+): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw buildHttpError(502, text.trim().slice(0, 500) || "Invalid JSON response body", modelUsed);
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw buildHttpError(502, "Empty JSON object from OpenRouter", modelUsed);
+  }
+  const root = parsed as Record<string, unknown>;
+  const eo = root.error;
+  if (eo !== undefined && eo !== null) {
+    let msg = "";
+    if (typeof eo === "object" && eo !== null && typeof (eo as { message?: unknown }).message === "string") {
+      msg = (eo as { message: string }).message;
+    } else if (typeof eo === "string") {
+      msg = eo;
+    } else {
+      msg = JSON.stringify(eo).slice(0, 600);
+    }
+    throw buildHttpError(502, msg, modelUsed);
+  }
+  return root;
+}
+
 function buildHttpError(
   status: number,
   bodyText: string,
@@ -154,12 +187,55 @@ function buildHttpError(
   return err;
 }
 
+/** 从 Chat Completions 响应中取助手文本（兼容 content 数组、reasoning 等） */
+export function extractAssistantMessageText(data: unknown): string {
+  if (!data || typeof data !== "object") return "";
+  const root = data as Record<string, unknown>;
+  const choices = root.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return "";
+  const ch = choices[0] as Record<string, unknown>;
+
+  if (typeof ch.text === "string" && ch.text.trim()) return ch.text.trim();
+
+  const msg = ch.message as Record<string, unknown> | undefined;
+  if (!msg || typeof msg !== "object") return "";
+
+  const refusal = msg.refusal;
+  if (typeof refusal === "string" && refusal.trim()) return refusal.trim();
+
+  const c = msg.content;
+  if (typeof c === "string" && c.trim()) return c.trim();
+  if (Array.isArray(c)) {
+    const joined = c
+      .map((part) => {
+        if (!part || typeof part !== "object") return "";
+        const p = part as Record<string, unknown>;
+        if (p.type === "text" && typeof p.text === "string") return p.text;
+        if (typeof p.text === "string") return p.text;
+        return "";
+      })
+      .join("");
+    if (joined.trim()) return joined.trim();
+  }
+
+  const reasoningContent = msg.reasoning_content;
+  if (typeof reasoningContent === "string" && reasoningContent.trim()) return reasoningContent.trim();
+
+  const reasoning = msg.reasoning;
+  if (typeof reasoning === "string" && reasoning.trim()) return reasoning.trim();
+
+  return "";
+}
+
 export async function openRouterComplete(
   messages: ChatMessage[],
   options?: {
     /** 默认读 OPENROUTER_MODEL，否则 openai/gpt-4o-mini */
     model?: string;
     temperature?: number;
+    maxTokens?: number;
+    /** 部分模型支持；若上游返回 400 会自动重试一次不带该字段 */
+    responseFormat?: { type: "json_object" };
   },
 ): Promise<{ content: string; rawModel: string }> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
@@ -169,7 +245,6 @@ export async function openRouterComplete(
     throw err;
   }
 
-  /* 供内联 async 闭包使用，便于 TS 将密钥收窄为 string */
   const bearerKey = apiKey;
 
   const primaryModel =
@@ -179,22 +254,34 @@ export async function openRouterComplete(
 
   const fallbackModel = process.env.OPENROUTER_FALLBACK_MODEL?.trim();
 
-  async function once(model: string): Promise<Response> {
+  async function sendCompletion(model: string, skipResponseFormat: boolean): Promise<Response> {
     const body: Record<string, unknown> = {
       model,
       messages,
       temperature: options?.temperature ?? 0.35,
-      max_tokens: 4096,
+      max_tokens: options?.maxTokens ?? 4096,
     };
+    if (options?.responseFormat && !skipResponseFormat) {
+      body.response_format = options.responseFormat;
+    }
 
-    return fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: openRouterRequestHeaders(bearerKey),
-      body: JSON.stringify(body),
-    });
+    try {
+      return await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: openRouterRequestHeaders(bearerKey),
+        body: JSON.stringify(body),
+      });
+    } catch (cause: unknown) {
+      const inner = cause instanceof Error ? cause.message : String(cause);
+      const err = new Error(`OpenRouter fetch failed: ${inner}`) as Error & {
+        code: OpenRouterErrorCode;
+      };
+      err.code = "FETCH_FAILED";
+      throw err;
+    }
   }
 
-  let res = await once(primaryModel);
+  let res = await sendCompletion(primaryModel, false);
   let modelUsed = primaryModel;
 
   if (
@@ -203,36 +290,51 @@ export async function openRouterComplete(
     fallbackModel &&
     fallbackModel !== primaryModel
   ) {
-    res = await once(fallbackModel);
+    res = await sendCompletion(fallbackModel, false);
     modelUsed = fallbackModel;
   }
 
-  if (!res.ok) {
-    const t = await res.text();
-    throw buildHttpError(res.status, t, modelUsed);
+  if (!res.ok && res.status === 400 && options?.responseFormat) {
+    res = await sendCompletion(modelUsed, true);
   }
 
-  const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-    model?: string;
-  };
-  const content = data.choices?.[0]?.message?.content?.trim() ?? "";
+  const responseText = await res.text();
+
+  if (!res.ok) {
+    throw buildHttpError(res.status, responseText, modelUsed);
+  }
+
+  const root = assertOpenRouterSuccessEnvelope(responseText, modelUsed);
+
+  const content = extractAssistantMessageText(root);
   if (!content) {
     const err = new Error("Empty OpenRouter response") as Error & { code: OpenRouterErrorCode };
     err.code = "PARSE_ERROR";
     throw err;
   }
-  return { content, rawModel: data.model ?? modelUsed };
+  const rawModel = typeof root.model === "string" ? root.model : modelUsed;
+  return { content, rawModel };
 }
 
-/** 从模型输出中提取 JSON（处理 ```json 围栏） */
+/** 从模型输出中提取 JSON 字符串（处理 ```json 围栏；支持根为数组 `[...]`） */
 export function extractJsonObject(text: string): string {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence?.[1]) return fence[1].trim();
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return text.slice(start, end + 1);
-  return text.trim();
+  const inner = fence?.[1]?.trim() ?? text.trim();
+  try {
+    JSON.parse(inner);
+    return inner;
+  } catch {
+    /* 继续截取 */
+  }
+  if (inner.startsWith("[")) {
+    const a0 = inner.indexOf("[");
+    const a1 = inner.lastIndexOf("]");
+    if (a0 >= 0 && a1 > a0) return inner.slice(a0, a1 + 1);
+  }
+  const start = inner.indexOf("{");
+  const end = inner.lastIndexOf("}");
+  if (start >= 0 && end > start) return inner.slice(start, end + 1);
+  return inner;
 }
 
 export function isOpenRouterHttpError(e: unknown): e is OpenRouterHttpError {

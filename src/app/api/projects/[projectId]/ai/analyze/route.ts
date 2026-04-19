@@ -12,6 +12,7 @@ import {
   isOpenRouterHttpError,
   openRouterComplete,
 } from "@/lib/openrouter";
+import { coerceAnalyzeOutput, parseLenientJson } from "@/lib/analyze-task-json";
 import { broadcastProjectSync } from "@/lib/project-realtime";
 
 type Ctx = { params: Promise<{ projectId: string }> };
@@ -242,7 +243,11 @@ export async function POST(req: Request, ctx: Ctx) {
         { role: "system", content: systemPrompt },
         { role: "user", content: parsedBody.data.text.slice(0, 32000) },
       ],
-      { temperature: 0.25 },
+      {
+        temperature: 0.25,
+        maxTokens: 4096,
+        responseFormat: { type: "json_object" },
+      },
     );
     rawJson = extractJsonObject(content);
   } catch (e: unknown) {
@@ -285,17 +290,26 @@ export async function POST(req: Request, ctx: Ctx) {
 
   let structured: z.infer<typeof OutputSchema>;
   try {
-    const obj = JSON.parse(rawJson) as unknown;
-    const out = OutputSchema.safeParse(obj);
+    const parsedUnknown = parseLenientJson(rawJson);
+    const coerced = coerceAnalyzeOutput(parsedUnknown);
+    const out = OutputSchema.safeParse(coerced);
     if (!out.success) {
       return NextResponse.json(
-        { error: "模型返回格式无法解析", detail: out.error.flatten() },
+        { error: "模型返回格式无法解析", detail: out.error.flatten(), rawPreview: rawJson.slice(0, 1200) },
         { status: 422 },
       );
     }
     structured = out.data;
-  } catch {
-    return NextResponse.json({ error: "模型返回不是合法 JSON" }, { status: 422 });
+  } catch (parseErr: unknown) {
+    const hint = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    return NextResponse.json(
+      {
+        error: "模型返回不是合法 JSON",
+        hint,
+        rawPreview: rawJson.slice(0, 1200),
+      },
+      { status: 422 },
+    );
   }
 
   if (structured.tasks.length === 0) {

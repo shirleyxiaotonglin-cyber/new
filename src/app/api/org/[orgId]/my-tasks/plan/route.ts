@@ -4,6 +4,8 @@ import { zhCN } from "date-fns/locale";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { parseLenientJson } from "@/lib/analyze-task-json";
+import { coercePlanAiPayload } from "@/lib/ai-output-coerce";
 import { getOpenRouterAttribution } from "@/lib/openrouter";
 import {
   extractJsonObject,
@@ -163,11 +165,23 @@ export async function POST(req: Request, ctx: Ctx) {
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent },
       ],
-      { temperature: scope === "today" ? 0.35 : 0.4 },
+      {
+        temperature: scope === "today" ? 0.35 : 0.4,
+        maxTokens: 8192,
+        responseFormat: { type: "json_object" },
+      },
     );
     const rawJson = extractJsonObject(content);
-    const obj = JSON.parse(rawJson) as unknown;
-    const out = PlanOutputSchema.safeParse(obj);
+    let parsed: unknown;
+    try {
+      parsed = parseLenientJson(rawJson);
+    } catch {
+      return NextResponse.json(
+        { error: "模型返回不是合法 JSON", raw: content.slice(0, 2000) },
+        { status: 422 },
+      );
+    }
+    const out = PlanOutputSchema.safeParse(coercePlanAiPayload(parsed));
     if (!out.success) {
       return NextResponse.json(
         { error: "模型返回格式无法解析", detail: out.error.flatten(), raw: content.slice(0, 2000) },
