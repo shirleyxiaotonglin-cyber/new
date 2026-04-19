@@ -633,6 +633,10 @@ export function ProjectWorkspace({
       setSaveError("任务名称不能为空");
       return;
     }
+    if (!textDirty) {
+      setSaveError("标题与任务内容相对服务器未改动，无需保存；修改后再点此按钮。");
+      return;
+    }
     setSavingText(true);
     const ok = await patchTask(selected.id, {
       title,
@@ -1280,10 +1284,19 @@ export function ProjectWorkspace({
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                disabled={!textDirty || savingText}
-                title={textDirty ? "保存任务名称与任务内容" : "暂无未保存的标题或内容"}
+                disabled={savingText}
+                title={
+                  savingText ?
+                    "保存中…"
+                  : textDirty ?
+                    "保存任务名称与任务内容"
+                  : "当前与服务器一致；修改标题或任务内容后即可保存"
+                }
                 onClick={() => void saveTaskFields()}
-                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                className={cn(
+                  "rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm hover:bg-red-50",
+                  savingText && "cursor-not-allowed opacity-50",
+                )}
               >
                 {savingText ? "保存中…" : "保存修改"}
               </button>
