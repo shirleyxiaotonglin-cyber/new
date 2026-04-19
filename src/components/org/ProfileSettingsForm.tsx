@@ -241,12 +241,11 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
           />
           <span className="sr-only">选择头像图片</span>
         </label>
-        <div className="text-center text-sm text-gray-600 sm:text-left">
-          <p>支持 JPG / PNG / WebP / GIF，约 350KB 以内。</p>
-          {avatarUrl ?
+        {avatarUrl ?
+          <div className="text-center sm:text-left">
             <button
               type="button"
-              className="mt-2 text-xs font-medium text-red-600 hover:underline"
+              className="text-xs font-medium text-red-600 hover:underline"
               onClick={async () => {
                 setMessage(null);
                 const res = await fetch("/api/auth/me", {
@@ -270,8 +269,8 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
             >
               移除头像
             </button>
-          : null}
-        </div>
+          </div>
+        : null}
       </div>
 
       <form onSubmit={saveProfile} className="space-y-5">
