@@ -59,6 +59,7 @@ export function MessagesCenterClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const peerFromUrl = searchParams.get("peer");
+  const projectIdFromUrl = searchParams.get("projectId");
   const [tab, setTab] = useState<"dm" | "notifications">("dm");
   const [threads, setThreads] = useState<DmThread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
@@ -121,24 +122,31 @@ export function MessagesCenterClient({
     void loadMessages(selectedThreadId);
   }, [selectedThreadId, loadMessages]);
 
-  /** 从任务页 ?peer= 打开会话 */
+  /** 从任务页 ?peer= 打开会话；若带 projectId= 则走项目级 open（与组织成员无交集时也可用） */
   useEffect(() => {
-    if (!peerFromUrl || peerHandledRef.current === peerFromUrl) return;
+    if (!peerFromUrl) return;
+    const handleKey = `${peerFromUrl}:${projectIdFromUrl ?? ""}`;
+    if (peerHandledRef.current === handleKey) return;
     let cancelled = false;
     void (async () => {
-      const res = await fetch(`/api/orgs/${orgId}/chat/dm/open`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ peerUserId: peerFromUrl }),
-      });
+      const res = await fetch(
+        projectIdFromUrl ?
+          `/api/projects/${projectIdFromUrl}/chat/dm/open`
+        : `/api/orgs/${orgId}/chat/dm/open`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ peerUserId: peerFromUrl }),
+        },
+      );
       const j = (await res.json()) as {
         threadId?: string;
         peer?: DmThread["peer"];
         error?: string;
       };
       if (cancelled || !res.ok || !j.threadId) return;
-      peerHandledRef.current = peerFromUrl;
+      peerHandledRef.current = handleKey;
       setTab("dm");
       setSelectedThreadId(j.threadId);
       if (j.peer) setSelectedPeer(j.peer);
@@ -148,7 +156,7 @@ export function MessagesCenterClient({
     return () => {
       cancelled = true;
     };
-  }, [orgId, peerFromUrl, router, loadThreads]);
+  }, [orgId, peerFromUrl, projectIdFromUrl, router, loadThreads]);
 
   useUserRealtime(true, (ev) => {
     if ((ev as DirectMessageEvent).type !== "direct_message") return;

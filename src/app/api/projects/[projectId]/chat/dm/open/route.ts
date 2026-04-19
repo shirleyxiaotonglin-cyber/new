@@ -54,5 +54,14 @@ export async function POST(req: Request, ctx: Ctx) {
     select: { id: true },
   });
 
-  return NextResponse.json({ threadId: thread.id, peerUserId });
+  const peerUser = await prisma.user.findUnique({
+    where: { id: peerUserId },
+    select: { id: true, name: true, email: true, avatarUrl: true },
+  });
+
+  return NextResponse.json({
+    threadId: thread.id,
+    peerUserId,
+    peer: peerUser,
+  });
 }

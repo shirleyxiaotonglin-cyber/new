@@ -48,16 +48,10 @@ import { TaskStatus, TaskPriority } from "@/lib/constants";
 import { CreateTaskModal } from "@/components/project/CreateTaskModal";
 import { GanttChartView } from "@/components/project/GanttChartView";
 import { useProjectRealtime } from "@/hooks/useProjectRealtime";
-import {
-  DirectChatDrawer,
-  type ChatPeer,
-  type DmPushPayload,
-} from "@/components/chat/DirectChatDrawer";
 import { TaskChatSection } from "@/components/chat/TaskChatSection";
 import { TaskDeliverablesSection } from "@/components/project/TaskDeliverablesSection";
 import { ProjectAssetsHub } from "@/components/project/ProjectAssetsHub";
 import { formatActivityDescription } from "@/lib/task-update-summary";
-import { useUserRealtime, type DirectMessageEvent } from "@/hooks/useUserRealtime";
 import { userDisplayName } from "@/lib/display-user";
 
 type TaskRow = {
@@ -317,9 +311,6 @@ export function ProjectWorkspace({
   const [deliverablesNonce, setDeliverablesNonce] = useState(0);
   const [projectIdCopied, setProjectIdCopied] = useState(false);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
-  /** 私聊抽屉 */
-  const [dmOpen, setDmOpen] = useState(false);
-  const [dmPeer, setDmPeer] = useState<ChatPeer | null>(null);
   /** 任务讨论 SSE 透传 */
   const [taskChatRemote, setTaskChatRemote] = useState<{
     taskId: string;
@@ -331,9 +322,17 @@ export function ProjectWorkspace({
       sender: { id: string; name: string; avatarUrl: string | null };
     };
   } | null>(null);
-  /** 私聊 SSE：进入项目即可收推送（无需先打开抽屉） */
-  const [dmPush, setDmPush] = useState<DmPushPayload | null>(null);
-  const clearDmPush = useCallback(() => setDmPush(null), []);
+
+  const goToMessageCenterDm = useCallback(
+    (peerUserId: string) => {
+      const q = new URLSearchParams({
+        peer: peerUserId,
+        projectId,
+      });
+      router.push(`/org/${orgId}/messages?${q.toString()}`);
+    },
+    [orgId, projectId, router],
+  );
 
   useEffect(() => {
     const v = searchParams.get("view");
@@ -495,19 +494,6 @@ export function ProjectWorkspace({
     enabled: !loading && !loadError,
     onTaskChat: (p) => setTaskChatRemote(p),
   });
-
-  useUserRealtime(!loading && !loadError && !!meId, (ev) => {
-    if (ev.type !== "direct_message") return;
-    const d = ev as DirectMessageEvent;
-    setDmPush({
-      threadId: d.threadId,
-      message: d.message,
-    });
-  });
-
-  useEffect(() => {
-    setDmPush(null);
-  }, [dmPeer?.id]);
 
   useEffect(() => {
     setSelected((prev) => {
@@ -937,12 +923,7 @@ export function ProjectWorkspace({
                               type="button"
                               className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
                               onClick={() => {
-                                const a = t.assignee!;
-                                setDmPeer({
-                                  id: a.id,
-                                  name: userDisplayName(a),
-                                });
-                                setDmOpen(true);
+                                goToMessageCenterDm(t.assignee!.id);
                               }}
                             >
                               <MessageCircle className="mr-0.5 inline h-3 w-3" aria-hidden />
@@ -1378,13 +1359,7 @@ export function ProjectWorkspace({
                   <button
                     type="button"
                     className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
-                    onClick={() => {
-                      setDmPeer({
-                        id: selected.assignee!.id,
-                        name: userDisplayName(selected.assignee!),
-                      });
-                      setDmOpen(true);
-                    }}
+                    onClick={() => goToMessageCenterDm(selected.assignee!.id)}
                   >
                     <MessageCircle className="h-3.5 w-3.5" aria-hidden />
                     私聊
@@ -1510,13 +1485,7 @@ export function ProjectWorkspace({
                           <button
                             type="button"
                             className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
-                            onClick={() => {
-                              setDmPeer({
-                                id: m.user.id,
-                                name: userDisplayName(m.user),
-                              });
-                              setDmOpen(true);
-                            }}
+                            onClick={() => goToMessageCenterDm(m.user.id)}
                           >
                             私聊
                           </button>
@@ -1680,18 +1649,6 @@ export function ProjectWorkspace({
         onRequestError={(msg) => setSaveError(msg)}
       />
 
-      <DirectChatDrawer
-        open={dmOpen}
-        onClose={() => {
-          setDmOpen(false);
-          setDmPeer(null);
-        }}
-        projectId={projectId}
-        peer={dmPeer}
-        currentUserId={meId}
-        dmPush={dmPush}
-        onDmPushConsumed={clearDmPush}
-      />
     </div>
   );
 }

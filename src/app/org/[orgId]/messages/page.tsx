@@ -42,7 +42,7 @@ export default async function MessagesPage({
         <p className="text-xs font-semibold uppercase tracking-wider text-red-600">消息中心</p>
         <h1 className="mt-2 text-2xl font-semibold text-gray-900">私信与通知</h1>
         <p className="mt-2 max-w-2xl text-sm text-gray-600">
-          与组织成员的一对一聊天保存在「私信」，支持文字与附件（与任务交付物共用存储）；系统通知在「通知与提醒」。从项目任务详情点击「私聊」将打开对应会话。
+          与组织成员的一对一聊天保存在「私信」，支持文字与附件（与任务交付物共用存储）；系统通知在「通知与提醒」。从项目任务详情点击「私聊」将跳转至本页并打开与对方的一对一会话。
         </p>
       </header>
 
