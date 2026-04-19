@@ -39,15 +39,30 @@ export async function POST(req: Request) {
     );
   }
 
-  const project = await prisma.project.findUnique({
+  let project = await prisma.project.findUnique({
     where: { id: normalizedId },
     select: { id: true, orgId: true, name: true },
   });
+
+  // 任务 ID 与项目 ID 同为 cuid，用户易把任务链接里的 ID 当成项目 ID
+  if (!project) {
+    const asTask = await prisma.task.findUnique({
+      where: { id: normalizedId },
+      select: { projectId: true },
+    });
+    if (asTask) {
+      project = await prisma.project.findUnique({
+        where: { id: asTask.projectId },
+        select: { id: true, orgId: true, name: true },
+      });
+    }
+  }
+
   if (!project) {
     return NextResponse.json(
       {
         error:
-          "项目不存在。请核对 ID 是否与负责人一致，或改为粘贴项目页完整链接；若来源不同环境（本地 / 线上），数据库中的项目也可能不一致。",
+          "未找到该项目。请核对是否为「项目」ID（浏览器地址栏 …/project/ 后的一段）；若粘贴的是任务详情里的 ID，也可保留——系统已尝试按任务归入项目。仍失败时请确认与对方使用同一站点（同一数据库），并与负责人核对 ID。",
       },
       { status: 404 },
     );

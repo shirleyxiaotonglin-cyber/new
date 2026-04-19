@@ -189,7 +189,8 @@ export function ProjectsHub({
             加入项目
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            向负责人索取项目 ID，或在本页下方「我的项目」列表中点「复制 ID」。加入后项目会出现在下方列表（无需再单独加入业务组织）。
+            向负责人索取项目 ID（浏览器地址栏 …/project/ 后的一段），或在本页「我的项目」中点「复制 ID」。误贴任务 ID
+            时会尝试归入对应项目。加入后无需再单独加入业务组织。
           </p>
           <form onSubmit={joinProject} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
