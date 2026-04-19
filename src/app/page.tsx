@@ -74,7 +74,7 @@ export default async function Home() {
             <span className="block sm:inline">一页掌握进度</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-center text-lg leading-relaxed text-gray-600">
-            在浏览器中开箱即用：白底界面、红色导航、看板与甘特、权限与审计。适合研发团队与市场、活动等多模板项目。
+            统一管理项目与任务进度：看板、列表与甘特视图，配套角色权限与协作流程。适用于研发交付、市场活动等多类型项目协同。
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link
@@ -83,7 +83,6 @@ export default async function Home() {
             >
               免费开始使用
             </Link>
-            <span className="text-sm text-gray-500">演示账号见登录页</span>
           </div>
           <div className="mx-auto mt-16 max-w-4xl rounded-2xl border border-gray-200 bg-gray-50/80 p-6 shadow-inner sm:p-10">
             <div className="flex flex-wrap items-center justify-center gap-8 text-center text-sm text-gray-600">
@@ -109,7 +108,7 @@ export default async function Home() {
       <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
         <h2 className="text-center text-2xl font-bold text-gray-900 sm:text-3xl">核心能力</h2>
         <p className="mx-auto mt-3 max-w-xl text-center text-gray-600">
-          面向网页访问场景优化：响应式布局，手机端侧栏抽屉，桌面端左侧固定导航。
+          响应式布局，适配电脑与移动浏览器；核心操作在桌面与手机上均可完成。
         </p>
         <ul className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {features.map(({ icon: Icon, title, desc }) => (
@@ -149,7 +148,7 @@ npm run dev
       <footer className="border-t border-gray-200 bg-white py-10">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 text-sm text-gray-500 sm:flex-row sm:px-6">
           <span>
-            © {new Date().getFullYear()} {PRODUCT_NAME} · 网页端项目管理演示
+            © {new Date().getFullYear()} {PRODUCT_NAME}
           </span>
           <Link href="/login" className="font-medium text-red-600 hover:text-red-700">
             进入登录
