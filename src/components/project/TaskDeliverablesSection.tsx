@@ -73,6 +73,7 @@ export function TaskDeliverablesSection({
   const [preview, setPreview] = useState<DeliverableItem | null>(null);
   const [maxUploadBytes, setMaxUploadBytes] = useState(52 * 1024 * 1024);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputId = `task-deliverables-file-${taskId}`;
   const dropRef = useRef<HTMLDivElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -154,13 +155,19 @@ export function TaskDeliverablesSection({
             category: category || undefined,
           }),
         });
-        const signJ = (await signRes.json()) as {
+        let signJ: {
           signedUrl?: string;
           path?: string;
           meta?: { category: string; fileName: string; mimeType: string; size: number };
           error?: string;
           hint?: string;
         };
+        try {
+          signJ = (await signRes.json()) as typeof signJ;
+        } catch {
+          errs.push(`${file.name}：服务器返回异常（非 JSON），请检查是否已登录或网络中断`);
+          continue;
+        }
 
         if (!signRes.ok) {
           if (signRes.status === 503) {
@@ -299,12 +306,13 @@ export function TaskDeliverablesSection({
         )}
       >
         <input
+          id={fileInputId}
           ref={inputRef}
           type="file"
           multiple
           className="sr-only"
           accept="image/*,video/*,application/pdf,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.json,.js,.ts,.tsx,.css,.html"
-          disabled={uploading || storageConfigured === false}
+          disabled={uploading}
           onChange={(e) => {
             const f = e.target.files;
             e.target.value = "";
@@ -324,17 +332,31 @@ export function TaskDeliverablesSection({
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            disabled={uploading || storageConfigured === false}
-            className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-            onClick={() => inputRef.current?.click()}
-          >
-            {uploading ?
+          {uploading ?
+            <span
+              className="inline-flex cursor-wait items-center gap-1 rounded-lg bg-red-600/90 px-3 py-1.5 text-xs font-medium text-white opacity-90"
+              aria-busy
+            >
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-            : <Upload className="h-3.5 w-3.5" aria-hidden />}
-            {uploading ? `上传中${uploadPct !== null ? ` ${uploadPct}%` : ""}` : "选择文件"}
-          </button>
+              上传中{uploadPct !== null ? ` ${uploadPct}%` : ""}
+            </span>
+          : (
+            <label
+              htmlFor={fileInputId}
+              className={cn(
+                "inline-flex cursor-pointer items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700",
+                storageConfigured === false && "ring-2 ring-amber-300 ring-offset-1",
+              )}
+              title={
+                storageConfigured === false ?
+                  "云存储未配置：可选文件，提交时会提示如何配置 Supabase"
+                : undefined
+              }
+            >
+              <Upload className="h-3.5 w-3.5" aria-hidden />
+              选择文件
+            </label>
+          )}
         </div>
         <p className="mt-2 text-[10px] text-gray-500">
           支持拖拽多个文件。单文件最大约 {Math.floor(maxUploadBytes / 1024 / 1024)}MB，经浏览器直传至对象存储，不经过应用服务器，可突破 Vercel 等对 API 体积极限。存储未配置时上传将提示失败。
