@@ -1245,20 +1245,31 @@ export function ProjectWorkspace({
       {/* 任务侧栏：flex 列 + min-h-0 才能让内部 overflow-y-auto 真正出现滚动条 */}
       {selected && (
         <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-gray-200 bg-white shadow-2xl">
-          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-red-600 px-4 py-3 text-white">
-            <h2 className="text-sm font-semibold">任务详情</h2>
-            <button
-              type="button"
-              className="text-red-100 hover:text-white"
-              onClick={() => {
-                setSelected(null);
-                if (searchParams.get("task")) {
-                  router.replace(`/org/${orgId}/project/${projectId}`, { scroll: false });
-                }
-              }}
-            >
-              关闭
-            </button>
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-red-600 px-4 py-3 text-white">
+            <h2 className="min-w-0 flex-1 text-sm font-semibold">任务详情</h2>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={!textDirty || savingText}
+                title={textDirty ? "保存任务名称与任务内容" : "暂无未保存的标题或内容"}
+                onClick={() => void saveTaskFields()}
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {savingText ? "保存中…" : "保存修改"}
+              </button>
+              <button
+                type="button"
+                className="shrink-0 text-red-100 hover:text-white"
+                onClick={() => {
+                  setSelected(null);
+                  if (searchParams.get("task")) {
+                    router.replace(`/org/${orgId}/project/${projectId}`, { scroll: false });
+                  }
+                }}
+              >
+                关闭
+              </button>
+            </div>
           </div>
           {saveError ?
             <div
@@ -1296,19 +1307,11 @@ export function ProjectWorkspace({
                 onChange={(e) => setDraftDesc(e.target.value)}
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={!textDirty || savingText}
-                onClick={() => void saveTaskFields()}
-                className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
-              >
-                {savingText ? "保存中…" : "保存修改"}
-              </button>
-              {textDirty ?
-                <span className="text-xs text-amber-700">标题或任务内容有未保存修改</span>
-              : null}
-            </div>
+            {textDirty ?
+              <p className="text-xs text-amber-700">
+                标题或任务内容已修改，请点击右上角「保存修改」写入服务器。
+              </p>
+            : null}
 
             <TaskDeliverablesSection
               taskId={selected.id}
