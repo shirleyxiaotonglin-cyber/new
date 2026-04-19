@@ -7,8 +7,6 @@ import { Check, Copy, FolderPlus, Loader2, LogIn, Rocket, Trash2 } from "lucide-
 import { ProjectTemplate } from "@/lib/constants";
 import { copyTextToClipboard } from "@/lib/copy-text";
 import { cn } from "@/lib/cn";
-import { WorkspaceDeliverablesHub } from "@/components/org/WorkspaceDeliverablesHub";
-
 type ProjectRow = {
   id: string;
   name: string;
@@ -212,8 +210,6 @@ export function ProjectsHub({
         </section>
 
         {err && <p className="text-sm text-red-600">{err}</p>}
-
-        <WorkspaceDeliverablesHub workspaceOrgId={workspaceOrgId} />
 
         <section>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">

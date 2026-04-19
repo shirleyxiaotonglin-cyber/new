@@ -14,7 +14,7 @@ async function signUrl(fileKey: string): Promise<string | null> {
 }
 
 /**
- * 当前用户在各已加入项目中的交付物汇总（用于「项目管理 → 资源中心」）。
+ * 当前用户在各已加入项目中的交付物汇总（JSON API；可按需在其它界面接入）。
  */
 export async function GET() {
   const session = await getSession();
