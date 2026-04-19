@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { tasksInvolvingMember } from "@/lib/my-tasks-scope";
+import { tasksInvolvingUserGlobal } from "@/lib/my-tasks-scope";
 import { MyTasksBoard } from "@/components/org/MyTasksBoard";
 import { MyTasksPlanPanel } from "@/components/org/MyTasksPlanPanel";
+import { ensurePrimaryOrgPage } from "@/lib/workspace";
 
 export default async function MyTasksPage({
   params,
@@ -14,16 +15,12 @@ export default async function MyTasksPage({
   if (!session) redirect("/login");
   const { orgId } = await params;
 
-  const member = await prisma.orgMember.findUnique({
-    where: { orgId_userId: { orgId, userId: session.sub } },
-    include: { org: true },
-  });
-  if (!member) redirect("/login");
+  const primary = await ensurePrimaryOrgPage(orgId, session.sub, "/my-tasks");
 
   const tasks = await prisma.task.findMany({
-    where: tasksInvolvingMember(orgId, session.sub),
+    where: tasksInvolvingUserGlobal(session.sub),
     orderBy: [{ dueDate: "asc" }],
-    include: { project: { select: { id: true, name: true } } },
+    include: { project: { select: { id: true, name: true, orgId: true } } },
     take: 200,
   });
 
@@ -34,6 +31,7 @@ export default async function MyTasksPage({
     dueDate: t.dueDate ? t.dueDate.toISOString() : null,
     projectId: t.projectId,
     projectName: t.project.name,
+    projectOrgId: t.project.orgId,
   }));
 
   return (
@@ -42,22 +40,25 @@ export default async function MyTasksPage({
         <p className="text-xs font-semibold uppercase tracking-wider text-red-600">我的任务</p>
         <h1 className="mt-2 text-2xl font-semibold text-gray-900">分配给我的工作项</h1>
         <p className="mt-2 max-w-2xl text-sm text-gray-600">
-          包含<strong className="font-medium text-gray-800">分配给你</strong>的任务，以及你为
+          包含各项目中<strong className="font-medium text-gray-800">分配给你</strong>的任务，以及你为
           <strong className="font-medium text-gray-800">协助人</strong>
-          的任务。点击任务进入项目并打开详情，可填写任务内容、上传交付物等。
+          的任务。点击任务进入对应项目并打开详情。
         </p>
       </header>
 
       <div className="mt-8">
-        <MyTasksBoard orgId={orgId} tasks={listItems} />
+        <MyTasksBoard
+          workspaceOrgId={primary.orgId}
+          tasks={listItems}
+        />
       </div>
 
       <MyTasksPlanPanel
-        orgId={orgId}
+        orgId={primary.orgId}
         taskProjectHrefByTaskId={Object.fromEntries(
           tasks.map((t) => [
             t.id,
-            `/org/${orgId}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`,
+            `/org/${t.project.orgId}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`,
           ]),
         )}
       />

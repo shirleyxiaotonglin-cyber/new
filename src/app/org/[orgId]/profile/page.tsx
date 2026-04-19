@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ProfileSettingsForm } from "@/components/org/ProfileSettingsForm";
+import { ensurePrimaryOrgPage } from "@/lib/workspace";
 
 export default async function ProfilePage({
   params,
@@ -11,6 +12,8 @@ export default async function ProfilePage({
   const session = await getSession();
   if (!session) redirect("/login");
   const { orgId } = await params;
+
+  await ensurePrimaryOrgPage(orgId, session.sub, "/profile");
 
   const member = await prisma.orgMember.findUnique({
     where: { orgId_userId: { orgId, userId: session.sub } },

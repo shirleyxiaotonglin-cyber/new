@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireProjectAccess, canUploadDeliverable } from "@/lib/access";
+import { requireProjectAccess, canUploadDeliverable, effectiveOrgRole } from "@/lib/access";
 import {
   MAX_DELIVERABLE_BYTES,
   inferCategoryFromMime,
@@ -100,7 +100,7 @@ export async function POST(req: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(task.projectId, session.sub);
   if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  if (!canUploadDeliverable(access.orgMember.role, access.projectMember.role)) {
+  if (!canUploadDeliverable(effectiveOrgRole(access.orgMember), access.projectMember.role)) {
     return NextResponse.json({ error: "无权上传交付物" }, { status: 403 });
   }
 

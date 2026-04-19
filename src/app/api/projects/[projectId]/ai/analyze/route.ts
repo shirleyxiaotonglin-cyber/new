@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { addDays, endOfDay, format, isValid, parseISO, startOfDay } from "date-fns";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireProjectAccess, canEditTask } from "@/lib/access";
+import { requireProjectAccess, canEditTask, effectiveOrgRole } from "@/lib/access";
 import { ActivityAction, TaskPriority, TaskStatus } from "@/lib/constants";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
@@ -218,7 +218,7 @@ export async function POST(req: Request, ctx: Ctx) {
   }
 
   const apply = parsedBody.data.apply === true;
-  if (apply && !canEditTask(access.orgMember.role, access.projectMember.role)) {
+  if (apply && !canEditTask(effectiveOrgRole(access.orgMember), access.projectMember.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

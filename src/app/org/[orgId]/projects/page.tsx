@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { ProjectsHub } from "@/components/org/ProjectsHub";
+import { ensurePrimaryOrgPage } from "@/lib/workspace";
 
 export default async function OrgProjectsPage({
   params,
@@ -12,11 +12,7 @@ export default async function OrgProjectsPage({
   if (!session) redirect("/login");
   const { orgId } = await params;
 
-  const member = await prisma.orgMember.findUnique({
-    where: { orgId_userId: { orgId, userId: session.sub } },
-    include: { org: true },
-  });
-  if (!member) redirect("/login");
+  const primary = await ensurePrimaryOrgPage(orgId, session.sub, "/projects");
 
-  return <ProjectsHub orgId={orgId} orgName={member.org.name} />;
+  return <ProjectsHub workspaceOrgId={primary.orgId} workspaceOrgName={primary.org.name} />;
 }

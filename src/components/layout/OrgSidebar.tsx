@@ -15,25 +15,21 @@ import { PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/product-brand";
 import type { OrgNavUser } from "@/components/layout/OrgNavUserSummary";
 import { OrgNavUserSidebarCard } from "@/components/layout/OrgNavUserSummary";
 
+/** 侧栏始终挂在「唯一工作空间」路由下；进入其它组织的项目时 URL 会变，导航仍回到本空间各页 */
 export function OrgSidebar({
-  orgId,
-  orgName,
+  workspaceOrgId,
+  workspaceOrgName,
   navUser,
-  orgSwitcherOrgs,
 }: {
-  orgId: string;
-  orgName: string;
+  workspaceOrgId: string;
+  workspaceOrgName: string;
   navUser: OrgNavUser;
-  /** 用户加入的多个工作区，用于手动切换；与「被拉进某组织后默认进该空间」的登录策略配合 */
-  orgSwitcherOrgs: { id: string; name: string }[];
 }) {
   const pathname = usePathname();
-  const base = `/org/${orgId}`;
+  const base = `/org/${workspaceOrgId}`;
 
   function activeProjectMgmt() {
-    return (
-      pathname.startsWith(`${base}/projects`) || pathname.includes(`${base}/project/`)
-    );
+    return pathname.startsWith(`${base}/projects`) || pathname.includes("/project/");
   }
 
   const items: {
@@ -86,34 +82,12 @@ export function OrgSidebar({
           {PRODUCT_NAME}
         </Link>
         <p className="mt-2 text-[11px] leading-relaxed text-red-100/95">{PRODUCT_TAGLINE}</p>
-        <p className="mt-3 truncate border-t border-red-500/50 pt-3 text-sm font-medium text-red-50" title={orgName}>
-          {orgName}
+        <p
+          className="mt-3 truncate border-t border-red-500/50 pt-3 text-sm font-medium text-red-50"
+          title={workspaceOrgName}
+        >
+          {workspaceOrgName}
         </p>
-        {orgSwitcherOrgs.length > 1 ? (
-          <div className="mt-2 border-t border-red-500/50 pt-2">
-            <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-200/90">
-              切换工作空间
-            </p>
-            <ul className="mt-1.5 max-h-32 space-y-0.5 overflow-y-auto text-sm">
-              {orgSwitcherOrgs.map((o) => (
-                <li key={o.id}>
-                  {o.id === orgId ?
-                    <span className="block truncate rounded-md bg-red-800/50 px-2 py-1.5 font-medium text-white">
-                      {o.name}
-                    </span>
-                  : <Link
-                      href={`/org/${o.id}/projects`}
-                      className="block truncate rounded-md px-2 py-1.5 text-red-50/95 transition hover:bg-red-700/60"
-                      title={o.name}
-                    >
-                      {o.name}
-                    </Link>
-                  }
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
         <div className="mt-3 border-t border-red-500/50 pt-3">
           <OrgNavUserSidebarCard user={navUser} />
         </div>
@@ -150,7 +124,7 @@ export function OrgSidebar({
         <button
           type="button"
           onClick={() => void logout()}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-white px-3 py-2.5 text-sm font-medium text-red-600 shadow-sm transition hover:bg-red-50"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-white px-3 py-2.5 text-sm font-medium text-red-600 shadow-sm transition hover:bg-red-50"
         >
           <LogOut className="h-4 w-4" />
           退出登录

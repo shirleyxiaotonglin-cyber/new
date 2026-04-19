@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireProjectAccess, canEditTask } from "@/lib/access";
+import { requireProjectAccess, canEditTask, effectiveOrgRole } from "@/lib/access";
 import { ActivityAction, TaskPriority, TaskStatus } from "@/lib/constants";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import { taskDetailInclude } from "@/lib/task-includes";
 import { broadcastProjectSync } from "@/lib/project-realtime";
-import { findRegisteredUserByEmail, ensureOrgAndProjectMember } from "@/lib/membership-invite";
+import { findRegisteredUserByEmail, ensureProjectMember } from "@/lib/membership-invite";
 
 type Ctx = { params: Promise<{ taskId: string }> };
 
@@ -48,7 +48,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(existing.projectId, session.sub);
   if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  if (!canEditTask(access.orgMember.role, access.projectMember.role)) {
+  if (!canEditTask(effectiveOrgRole(access.orgMember), access.projectMember.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -174,8 +174,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
 
     for (const uid of Array.from(toEnsure)) {
-      await ensureOrgAndProjectMember(tx, {
-        orgId,
+      await ensureProjectMember(tx, {
         projectId: existing.projectId,
         userId: uid,
       });
@@ -240,7 +239,7 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const access = await requireProjectAccess(existing.projectId, session.sub);
   if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  if (!canEditTask(access.orgMember.role, access.projectMember.role)) {
+  if (!canEditTask(effectiveOrgRole(access.orgMember), access.projectMember.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

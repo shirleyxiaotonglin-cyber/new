@@ -26,6 +26,8 @@ export type MyTaskListItem = {
   dueDate: string | null;
   projectId: string;
   projectName: string;
+  /** 项目所属组织，用于正确深链到项目（可能非「工作空间」主组织） */
+  projectOrgId?: string;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -56,12 +58,16 @@ function dueOnDay(due: string | null, day: Date): boolean {
   }
 }
 
+function taskOrgId(t: MyTaskListItem, workspaceOrgId: string) {
+  return t.projectOrgId ?? workspaceOrgId;
+}
+
 function MonthCalendar({
   tasks,
-  orgId,
+  workspaceOrgId,
 }: {
   tasks: MyTaskListItem[];
-  orgId: string;
+  workspaceOrgId: string;
 }) {
   const [cursorMonth, setCursorMonth] = useState(() => startOfMonth(new Date()));
 
@@ -130,7 +136,7 @@ function MonthCalendar({
                   {dayTasks.map((dt) => (
                     <Link
                       key={dt.id}
-                      href={`/org/${orgId}/project/${dt.projectId}?task=${encodeURIComponent(dt.id)}`}
+                      href={`/org/${taskOrgId(dt, workspaceOrgId)}/project/${dt.projectId}?task=${encodeURIComponent(dt.id)}`}
                       className="block truncate rounded bg-red-50 px-1 py-0.5 text-[10px] font-medium text-red-800 ring-1 ring-red-100 hover:bg-red-100"
                       title={`${dt.title} · ${dt.projectName}`}
                     >
@@ -151,7 +157,7 @@ function MonthCalendar({
             {undated.map((t) => (
               <li key={t.id}>
                 <Link
-                  href={`/org/${orgId}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`}
+                  href={`/org/${taskOrgId(t, workspaceOrgId)}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`}
                   className="inline-flex max-w-[220px] items-center truncate rounded-full bg-white px-2.5 py-1 text-xs text-gray-800 ring-1 ring-gray-200 hover:ring-red-200"
                   title={t.projectName}
                 >
@@ -166,7 +172,13 @@ function MonthCalendar({
   );
 }
 
-export function MyTasksBoard({ orgId, tasks }: { orgId: string; tasks: MyTaskListItem[] }) {
+export function MyTasksBoard({
+  workspaceOrgId,
+  tasks,
+}: {
+  workspaceOrgId: string;
+  tasks: MyTaskListItem[];
+}) {
   const [tab, setTab] = useState<TabKey>("all");
 
   const filtered = useMemo(() => {
@@ -223,7 +235,7 @@ export function MyTasksBoard({ orgId, tasks }: { orgId: string; tasks: MyTaskLis
 
       {tab === "calendar" ?
         <div className="mt-6">
-          <MonthCalendar tasks={tasks} orgId={orgId} />
+          <MonthCalendar tasks={tasks} workspaceOrgId={workspaceOrgId} />
         </div>
       : filtered.length === 0 ?
         <p className="mt-10 text-center text-sm text-gray-500">
@@ -232,7 +244,7 @@ export function MyTasksBoard({ orgId, tasks }: { orgId: string; tasks: MyTaskLis
       : (
         <ul className="mt-6 space-y-2">
           {filtered.map((t) => {
-            const taskHref = `/org/${orgId}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`;
+            const taskHref = `/org/${taskOrgId(t, workspaceOrgId)}/project/${t.projectId}?task=${encodeURIComponent(t.id)}`;
             return (
               <li
                 key={t.id}

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { MessagesCenterClient } from "@/components/org/MessagesCenterClient";
+import { ensurePrimaryOrgPage } from "@/lib/workspace";
 
 function MessagesFallback() {
   return (
@@ -19,10 +20,7 @@ export default async function MessagesPage({
   if (!session) redirect("/login");
   const { orgId } = await params;
 
-  const member = await prisma.orgMember.findUnique({
-    where: { orgId_userId: { orgId, userId: session.sub } },
-  });
-  if (!member) redirect("/login");
+  const primary = await ensurePrimaryOrgPage(orgId, session.sub, "/messages");
 
   const list = await prisma.notification.findMany({
     where: { userId: session.sub },
@@ -50,7 +48,7 @@ export default async function MessagesPage({
 
       <Suspense fallback={<MessagesFallback />}>
         <MessagesCenterClient
-          orgId={orgId}
+          orgId={primary.orgId}
           currentUserId={session.sub}
           initialNotifications={initialNotifications}
         />

@@ -18,8 +18,8 @@ export default async function Home() {
   if (session) {
     const first = await prisma.orgMember.findFirst({
       where: { userId: session.sub },
-      /** 与 /api/auth/me 一致：最近加入（如被拉进某组织做任务）的工作区优先 */
-      orderBy: { joinedAt: "desc" },
+      /** 与 /api/auth/me、`getPrimaryOrgMembership` 一致：首个加入的组织为唯一工作空间 */
+      orderBy: { joinedAt: "asc" },
     });
     if (first) {
       redirect(`/org/${first.orgId}`);
@@ -27,7 +27,7 @@ export default async function Home() {
   }
 
   const features = [
-    { icon: LayoutDashboard, title: "多空间 / 组织", desc: "Workspace 级隔离，模板化立项。" },
+    { icon: LayoutDashboard, title: "单一工作空间", desc: "项目归属各自业务侧；侧栏「我的项目」跨业务汇总。" },
     { icon: Kanban, title: "看板 · 列表 · 甘特", desc: "多视图同步，拖拽改状态。" },
     { icon: Users, title: "角色与协作", desc: "Owner / Admin / Member / Guest，评论与 @ 提醒。" },
     { icon: Lock, title: "安全与审计", desc: "RBAC、操作审计日志，可接多租户 SaaS。" },

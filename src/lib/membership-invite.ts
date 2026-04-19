@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { OrgRole, ProjectMemberRole } from "@/lib/constants";
+import { ProjectMemberRole } from "@/lib/constants";
 
 export function normalizeInviteEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -16,20 +16,14 @@ export async function findRegisteredUserByEmail(email: string) {
   });
 }
 
-/** 将用户纳入组织与普通项目成员（幂等），便于任务负责人/协作人可见 */
-export async function ensureOrgAndProjectMember(
+/**
+ * 将用户纳入项目成员（幂等）。
+ * 被指派负责人/协作人时只加入项目，不创建额外「组织」成员身份，项目会出现在对方唯一工作空间的「我的项目」中。
+ */
+export async function ensureProjectMember(
   tx: Prisma.TransactionClient,
-  params: { orgId: string; projectId: string; userId: string },
+  params: { projectId: string; userId: string },
 ): Promise<void> {
-  await tx.orgMember.upsert({
-    where: { orgId_userId: { orgId: params.orgId, userId: params.userId } },
-    create: {
-      orgId: params.orgId,
-      userId: params.userId,
-      role: OrgRole.MEMBER,
-    },
-    update: {},
-  });
   await tx.projectMember.upsert({
     where: {
       projectId_userId: { projectId: params.projectId, userId: params.userId },

@@ -1,3 +1,4 @@
+import type { OrgMember } from "@prisma/client";
 import { prisma } from "./prisma";
 import { OrgRole, ProjectMemberRole } from "./constants";
 
@@ -7,6 +8,10 @@ export async function requireOrgMember(orgId: string, userId: string) {
   });
 }
 
+/**
+ * 无组织成员身份、仅被拉进项目的用户：`orgMember` 为 null，
+ * 权限按 `OrgRole.GUEST` 与项目角色计算（见 effectiveOrgRole）。
+ */
 export async function requireProjectAccess(projectId: string, userId: string) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -16,8 +21,12 @@ export async function requireProjectAccess(projectId: string, userId: string) {
   const projectMember = project.members[0];
   if (!projectMember) return null;
   const orgMember = await requireOrgMember(project.orgId, userId);
-  if (!orgMember) return null;
   return { project, orgMember, projectMember };
+}
+
+/** 用于仅项目协作、未加入业务组织时的 RBAC */
+export function effectiveOrgRole(orgMember: OrgMember | null): string {
+  return orgMember?.role ?? OrgRole.GUEST;
 }
 
 function projectMemberCanEditTasks(projectRole: string) {

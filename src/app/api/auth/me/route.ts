@@ -55,8 +55,8 @@ export async function GET() {
   const orgs = await prisma.orgMember.findMany({
     where: { userId: user.id },
     include: { org: { select: { id: true, name: true, slug: true } } },
-    /** 最近加入/被拉入的空间优先，与登录后默认工作区一致，避免被指派任务后仍落在旧组织 */
-    orderBy: { joinedAt: "desc" },
+    /** 与首页跳转、`getPrimaryOrgMembership` 一致：首个加入的组织为默认工作空间 */
+    orderBy: { joinedAt: "asc" },
   });
   return NextResponse.json({
     user,

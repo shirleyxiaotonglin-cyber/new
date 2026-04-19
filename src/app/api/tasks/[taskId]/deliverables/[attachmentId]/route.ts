@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireProjectAccess, canDeleteDeliverable } from "@/lib/access";
+import { requireProjectAccess, canDeleteDeliverable, effectiveOrgRole } from "@/lib/access";
 import { getDeliverablesBucket, getSupabaseAdmin } from "@/lib/supabase-storage";
 
 type Ctx = { params: Promise<{ taskId: string; attachmentId: string }> };
@@ -27,7 +27,7 @@ export async function DELETE(_req: Request, ctx: Ctx) {
 
   if (
     !canDeleteDeliverable(
-      access.orgMember.role,
+      effectiveOrgRole(access.orgMember),
       access.projectMember.role,
       row.fileAsset.uploadedById,
       session.sub,
