@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { PRODUCT_NAME } from "@/lib/product-brand";
 
 export function OrgAppShell({
   sidebar,
@@ -30,7 +31,9 @@ export function OrgAppShell({
         >
           <Menu className="h-6 w-6" />
         </button>
-        <span className="text-sm font-bold tracking-tight">ProjectHub</span>
+        <span className="max-w-[calc(100vw-5rem)] truncate text-center text-xs font-bold leading-tight tracking-tight">
+          {PRODUCT_NAME}
+        </span>
         <span className="w-10" />
       </header>
 

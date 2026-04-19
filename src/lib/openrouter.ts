@@ -3,6 +3,8 @@
  * 文档：https://openrouter.ai/docs/api/reference
  */
 
+import { PRODUCT_NAME } from "@/lib/product-brand";
+
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 export type OpenRouterErrorCode = "MISSING_API_KEY" | "HTTP_ERROR" | "PARSE_ERROR";
@@ -25,7 +27,7 @@ export function getOpenRouterAttribution(): {
   omitAttribution: boolean;
   refererSource: OpenRouterRefererSource;
 } {
-  const title = process.env.OPENROUTER_APP_TITLE?.trim() || "ProjectHub";
+  const title = process.env.OPENROUTER_APP_TITLE?.trim() || PRODUCT_NAME;
   const omit =
     process.env.OPENROUTER_OMIT_ATTRIBUTION?.trim() === "1" ||
     process.env.OPENROUTER_OMIT_ATTRIBUTION?.toLowerCase().trim() === "true";

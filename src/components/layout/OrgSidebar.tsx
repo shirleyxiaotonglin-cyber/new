@@ -11,6 +11,7 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/product-brand";
 
 export function OrgSidebar({
   orgId,
@@ -76,10 +77,11 @@ export function OrgSidebar({
   return (
     <aside className="flex h-full min-h-screen w-60 shrink-0 flex-col bg-red-600 text-white shadow-md md:h-auto">
       <div className="border-b border-red-500 px-4 pb-5 pt-6 md:pt-12">
-        <Link href="/" className="block text-lg font-bold tracking-tight text-white">
-          ProjectHub
+        <Link href="/" className="block text-[15px] font-bold leading-snug tracking-tight text-white">
+          {PRODUCT_NAME}
         </Link>
-        <p className="mt-1 truncate text-sm text-red-100" title={orgName}>
+        <p className="mt-2 text-[11px] leading-relaxed text-red-100/95">{PRODUCT_TAGLINE}</p>
+        <p className="mt-3 truncate border-t border-red-500/50 pt-3 text-sm font-medium text-red-50" title={orgName}>
           {orgName}
         </p>
       </div>

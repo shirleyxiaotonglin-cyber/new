@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { parseApiError } from "@/lib/parse-api-error";
+import { PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/product-brand";
 
 type Mode = "login" | "register";
 
@@ -123,8 +124,10 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-white px-4 py-10 text-gray-900">
       <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-lg">
-        <h1 className="text-center text-2xl font-bold tracking-tight text-red-600">ProjectHub</h1>
-        <p className="mt-2 text-center text-sm text-gray-500">企业级多租户项目管理</p>
+        <h1 className="text-center text-xl font-bold leading-snug tracking-tight text-red-600 sm:text-2xl">
+          {PRODUCT_NAME}
+        </h1>
+        <p className="mt-2 text-center text-xs leading-relaxed text-gray-500 sm:text-sm">{PRODUCT_TAGLINE}</p>
 
         <div className="mt-6 flex rounded-lg border border-gray-200 bg-gray-50 p-1">
           <button

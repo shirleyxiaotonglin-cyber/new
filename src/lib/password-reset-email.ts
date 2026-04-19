@@ -2,6 +2,8 @@
  * 可选：配置 RESEND_API_KEY + EMAIL_FROM 后发送重置邮件。
  * 未配置时仅创建重置令牌，由接口返回说明（见 forgot-password 路由）。
  */
+
+import { PRODUCT_NAME } from "@/lib/product-brand";
 export async function sendPasswordResetEmail(params: {
   to: string;
   resetUrl: string;
@@ -21,7 +23,7 @@ export async function sendPasswordResetEmail(params: {
     body: JSON.stringify({
       from,
       to: [params.to],
-      subject: "重置 ProjectHub 密码",
+      subject: `重置 ${PRODUCT_NAME} 密码`,
       html: `
         <p>你好，</p>
         <p>请点击下方链接重置密码（1 小时内有效）：</p>

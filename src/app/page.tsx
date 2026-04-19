@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/product-brand";
 
 export default async function Home() {
   const session = await getSession();
@@ -37,9 +38,14 @@ export default async function Home() {
     <div className="min-h-screen bg-white text-gray-900">
       <header className="sticky top-0 z-30 border-b border-gray-200/80 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="text-lg font-bold tracking-tight text-red-600">
-            ProjectHub
-          </Link>
+          <span className="flex max-w-[min(100%,14rem)] flex-col sm:max-w-none">
+            <Link href="/" className="text-base font-bold leading-tight tracking-tight text-red-600 sm:text-lg">
+              {PRODUCT_NAME}
+            </Link>
+            <span className="mt-0.5 hidden text-[11px] font-normal text-gray-500 sm:block">
+              {PRODUCT_TAGLINE}
+            </span>
+          </span>
           <nav className="flex items-center gap-3">
             <Link
               href="/login"
@@ -137,7 +143,9 @@ npm run dev
 
       <footer className="border-t border-gray-200 bg-white py-10">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 text-sm text-gray-500 sm:flex-row sm:px-6">
-          <span>© {new Date().getFullYear()} ProjectHub · 网页端项目管理演示</span>
+          <span>
+            © {new Date().getFullYear()} {PRODUCT_NAME} · 网页端项目管理演示
+          </span>
           <Link href="/login" className="font-medium text-red-600 hover:text-red-700">
             进入登录
           </Link>

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/product-brand";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -18,19 +19,19 @@ const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "ProjectHub — 企业级项目管理",
-    template: "%s · ProjectHub",
+    default: `${PRODUCT_NAME} — 在线协作`,
+    template: `%s · ${PRODUCT_NAME}`,
   },
-  description: "多租户协作、看板甘特、RBAC 与审计。网页访问，响应式布局。",
-  keywords: ["项目管理", "看板", "甘特图", "协作", "SaaS", "多租户"],
-  authors: [{ name: "ProjectHub" }],
+  description: `${PRODUCT_TAGLINE}。网页访问，支持组织与项目隔离、角色权限与审计。`,
+  keywords: ["项目管理", "看板", "甘特图", "协作", "任务", "交付物", "多租户"],
+  authors: [{ name: PRODUCT_NAME }],
   openGraph: {
     type: "website",
     locale: "zh_CN",
     url: siteUrl,
-    siteName: "ProjectHub",
-    title: "ProjectHub — 企业级项目管理",
-    description: "在浏览器中管理项目：看板、列表、甘特与报表。",
+    siteName: PRODUCT_NAME,
+    title: `${PRODUCT_NAME} — 在线协作`,
+    description: PRODUCT_TAGLINE,
   },
 };
 
