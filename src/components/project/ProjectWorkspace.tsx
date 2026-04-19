@@ -34,6 +34,7 @@ import {
   MessageCircle,
   Pencil,
   Plus,
+  Save,
   Search,
   Sparkles,
   Trash2,
@@ -313,6 +314,10 @@ export function ProjectWorkspace({
   /** 标题/描述防抖写入，避免未失焦就刷新导致未保存 */
   const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const descSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const taskDetailTitleRef = useRef<HTMLInputElement | null>(null);
+  const taskDetailDescRef = useRef<HTMLTextAreaElement | null>(null);
+  const [detailSaveFeedback, setDetailSaveFeedback] = useState<string | null>(null);
+  const [detailSaving, setDetailSaving] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -460,6 +465,10 @@ export function ProjectWorkspace({
   }, [tasks]);
 
   useEffect(() => {
+    setDetailSaveFeedback(null);
+  }, [selected?.id]);
+
+  useEffect(() => {
     return () => {
       if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
       if (descSaveTimerRef.current) clearTimeout(descSaveTimerRef.current);
@@ -550,6 +559,40 @@ export function ProjectWorkspace({
     } catch {
       setSaveError("网络异常，请稍后重试");
       return false;
+    }
+  }
+
+  async function saveTaskDetailDraft() {
+    if (!selected) return;
+    setDetailSaveFeedback(null);
+    if (titleSaveTimerRef.current) {
+      clearTimeout(titleSaveTimerRef.current);
+      titleSaveTimerRef.current = null;
+    }
+    if (descSaveTimerRef.current) {
+      clearTimeout(descSaveTimerRef.current);
+      descSaveTimerRef.current = null;
+    }
+    const title = taskDetailTitleRef.current?.value ?? selected.title;
+    const descRaw = taskDetailDescRef.current?.value ?? "";
+    const description = descRaw.trim() ? descRaw : null;
+    const payload: Record<string, unknown> = {};
+    if (title !== selected.title) payload.title = title;
+    if (description !== (selected.description ?? null)) payload.description = description;
+    if (Object.keys(payload).length === 0) {
+      setDetailSaveFeedback("当前没有需要保存的修改");
+      window.setTimeout(() => setDetailSaveFeedback(null), 2500);
+      return;
+    }
+    setDetailSaving(true);
+    try {
+      const ok = await patchTask(selected.id, payload);
+      if (ok) {
+        setDetailSaveFeedback("已保存");
+        window.setTimeout(() => setDetailSaveFeedback(null), 2500);
+      }
+    } finally {
+      setDetailSaving(false);
     }
   }
 
@@ -1144,15 +1187,28 @@ export function ProjectWorkspace({
       {/* 任务侧栏：flex 列 + min-h-0 才能让内部 overflow-y-auto 真正出现滚动条 */}
       {selected && (
         <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-gray-200 bg-white shadow-2xl">
-          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-red-600 px-4 py-3 text-white">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-red-600 px-4 py-3 text-white">
             <h2 className="text-sm font-semibold">任务详情</h2>
-            <button
-              type="button"
-              className="text-red-100 hover:text-white"
-              onClick={() => setSelected(null)}
-            >
-              关闭
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={detailSaving}
+                className="inline-flex items-center gap-1 rounded-md border border-white/40 bg-white/10 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-white/20 disabled:opacity-50"
+                onClick={() => void saveTaskDetailDraft()}
+              >
+                {detailSaving ?
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                : <Save className="h-3.5 w-3.5" aria-hidden />}
+                保存
+              </button>
+              <button
+                type="button"
+                className="text-red-100 hover:text-white"
+                onClick={() => setSelected(null)}
+              >
+                关闭
+              </button>
+            </div>
           </div>
           {saveError ?
             <div
@@ -1170,10 +1226,14 @@ export function ProjectWorkspace({
             </div>
           : null}
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-y-contain p-4 pb-8 text-sm text-gray-800">
+            <p className="rounded-lg bg-gray-50 px-2 py-1.5 text-[11px] leading-snug text-gray-500">
+              名称与任务内容可失焦自动保存，或点右上角「保存」/底部「保存更改」立即提交。
+            </p>
             <div>
               <label className="text-xs font-medium text-gray-500">任务名称</label>
               <input
                 key={`${selected.id}-title`}
+                ref={taskDetailTitleRef}
                 className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 defaultValue={selected.title}
                 onChange={(e) => {
@@ -1199,6 +1259,7 @@ export function ProjectWorkspace({
               <label className="text-xs font-medium text-gray-500">任务内容</label>
               <textarea
                 key={`${selected.id}-desc`}
+                ref={taskDetailDescRef}
                 className="mt-1 w-full resize-y rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 rows={5}
                 placeholder="描述任务目标、验收标准等"
@@ -1419,7 +1480,26 @@ export function ProjectWorkspace({
                 </ul>
               </div>
             ) : null}
-            <div className="border-t border-gray-200 pt-4">
+            <div className="space-y-3 border-t border-gray-200 pt-4">
+              {detailSaveFeedback ?
+                <p
+                  role="status"
+                  className="text-center text-xs font-medium text-green-700"
+                >
+                  {detailSaveFeedback}
+                </p>
+              : null}
+              <button
+                type="button"
+                disabled={detailSaving}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+                onClick={() => void saveTaskDetailDraft()}
+              >
+                {detailSaving ?
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                : <Save className="h-4 w-4 shrink-0" aria-hidden />}
+                保存更改
+              </button>
               <button
                 type="button"
                 className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-medium text-red-800 hover:bg-red-100"
