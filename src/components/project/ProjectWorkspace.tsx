@@ -24,9 +24,10 @@ import {
   YAxis,
 } from "recharts";
 import {
-  Activity,
   BarChart3,
+  Check,
   Columns3,
+  Copy,
   GanttChart as GanttIcon,
   LayoutList,
   Loader2,
@@ -40,6 +41,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/cn";
+import { copyTextToClipboard } from "@/lib/copy-text";
 import { TaskStatus, TaskPriority } from "@/lib/constants";
 import { CreateTaskModal } from "@/components/project/CreateTaskModal";
 import { GanttChartView } from "@/components/project/GanttChartView";
@@ -96,7 +98,6 @@ type ProjectMemberOption = {
 type View =
   | "board"
   | "list"
-  | "timeline"
   | "gantt"
   | "dashboard"
   | "activity"
@@ -289,6 +290,7 @@ export function ProjectWorkspace({
   } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [projectIdCopied, setProjectIdCopied] = useState(false);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   /** 私聊抽屉 */
   const [dmOpen, setDmOpen] = useState(false);
@@ -507,6 +509,17 @@ export function ProjectWorkspace({
     }
   }
 
+  async function handleCopyProjectId() {
+    const ok = await copyTextToClipboard(projectId);
+    if (ok) {
+      setProjectIdCopied(true);
+      window.setTimeout(() => setProjectIdCopied(false), 2000);
+      setSaveError(null);
+    } else {
+      setSaveError("无法复制项目 ID 到剪贴板，请长按下方 ID 手动复制");
+    }
+  }
+
   async function patchTask(
     id: string,
     body: Record<string, unknown>,
@@ -564,25 +577,6 @@ export function ProjectWorkspace({
     }));
   }, [analytics]);
 
-  const ganttMin = useMemo(() => {
-    const dates = tasks
-      .map((t) => [t.startDate, t.dueDate])
-      .flat()
-      .filter(Boolean) as string[];
-    if (!dates.length) return new Date();
-    return new Date(Math.min(...dates.map((d) => new Date(d).getTime())));
-  }, [tasks]);
-
-  const barTasks = useMemo(() => {
-    return tasks.map((t) => {
-      const start = t.startDate ? new Date(t.startDate) : new Date();
-      const end = t.dueDate ? new Date(t.dueDate) : new Date(start.getTime() + 86400000 * 3);
-      const duration = Math.max(1, (end.getTime() - start.getTime()) / 86400000);
-      const offset = (start.getTime() - ganttMin.getTime()) / 86400000;
-      return { ...t, offset, duration: Math.max(0.5, duration) };
-    });
-  }, [tasks, ganttMin]);
-
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center gap-2 text-gray-500">
@@ -629,12 +623,33 @@ export function ProjectWorkspace({
       ) : null}
       <header className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wider text-red-600">当前项目</p>
             <h1 className="text-xl font-semibold tracking-tight text-gray-900">{projectName}</h1>
+            <div className="mt-2 flex max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+              <code className="max-w-[min(100%,28rem)] truncate rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600 sm:text-xs" title={projectId}>
+                {projectId}
+              </code>
+              <button
+                type="button"
+                onClick={() => void handleCopyProjectId()}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+                  projectIdCopied ?
+                    "border-green-200 bg-green-50 text-green-800"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-red-200 hover:text-red-700",
+                )}
+                title="复制项目 ID，供同事在「项目管理 → 加入项目」中粘贴"
+              >
+                {projectIdCopied ?
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                : <Copy className="h-3.5 w-3.5" aria-hidden />}
+                {projectIdCopied ? "已复制" : "复制 ID"}
+              </button>
+            </div>
             <Link
               href={`/org/${orgId}`}
-              className="mt-1 inline-flex text-sm text-gray-500 hover:text-red-600"
+              className="mt-2 inline-flex text-sm text-gray-500 hover:text-red-600"
             >
               ← 返回工作台
             </Link>
@@ -653,7 +668,6 @@ export function ProjectWorkspace({
               [
                 ["board", "看板", Columns3],
                 ["list", "列表", LayoutList],
-                ["timeline", "时间轴", Activity],
                 ["gantt", "甘特", GanttIcon],
                 ["dashboard", "报表", BarChart3],
                 ["activity", "动态", Search],
@@ -841,28 +855,6 @@ export function ProjectWorkspace({
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
-
-        {view === "timeline" && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-500">按开始日排序的时间轴（与甘特共用任务起止日期）。</p>
-            {barTasks
-              .sort((a, b) => (a.startDate ?? "").localeCompare(b.startDate ?? ""))
-              .map((t) => (
-                <div key={t.id} className="flex items-center gap-4">
-                  <div className="w-48 shrink-0 truncate text-sm text-gray-800">{t.title}</div>
-                  <div className="relative h-8 flex-1 rounded bg-gray-100">
-                    <div
-                      className="absolute top-1 h-6 rounded bg-red-500"
-                      style={{
-                        left: `${Math.min(90, t.offset * 4)}px`,
-                        width: `${Math.min(100, t.duration * 24)}px`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
           </div>
         )}
 

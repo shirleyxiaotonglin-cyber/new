@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FolderPlus, LogIn, Rocket } from "lucide-react";
+import { Check, Copy, FolderPlus, LogIn, Rocket } from "lucide-react";
 import { ProjectTemplate } from "@/lib/constants";
+import { copyTextToClipboard } from "@/lib/copy-text";
+import { cn } from "@/lib/cn";
 
 type ProjectRow = {
   id: string;
@@ -24,6 +26,7 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
   const [name, setName] = useState("");
   const [joinId, setJoinId] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [copiedProjectId, setCopiedProjectId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,6 +96,19 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
     else void load();
   }
 
+  async function copyProjectId(id: string) {
+    setErr(null);
+    const ok = await copyTextToClipboard(id);
+    if (!ok) {
+      setErr("无法写入剪贴板，请手动选中下方项目 ID 复制");
+      return;
+    }
+    setCopiedProjectId(id);
+    window.setTimeout(() => {
+      setCopiedProjectId((cur) => (cur === id ? null : cur));
+    }, 2000);
+  }
+
   return (
     <div className="min-h-screen bg-white px-4 py-6 sm:px-8">
       <header className="border-b border-gray-200 pb-6">
@@ -131,7 +147,9 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
             <LogIn className="h-5 w-5 text-red-600" />
             加入项目
           </h2>
-          <p className="mt-1 text-sm text-gray-500">向负责人索取项目 ID，加入后即可协作。</p>
+          <p className="mt-1 text-sm text-gray-500">
+            向负责人索取项目 ID，或在本页下方「进入项目」列表中点「复制 ID」，粘贴到此处即可加入。
+          </p>
           <form onSubmit={joinProject} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
               <label className="text-xs text-gray-500">项目 ID</label>
@@ -166,17 +184,45 @@ export function ProjectsHub({ orgId, orgName }: { orgId: string; orgName: string
           ) : (
             <ul className="mt-4 space-y-2">
               {projects.map((p) => (
-                <li key={p.id}>
+                <li
+                  key={p.id}
+                  className="flex overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-red-200 hover:shadow"
+                >
                   <Link
                     href={`/org/${orgId}/project/${p.id}`}
-                    className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-4 shadow-sm transition hover:border-red-200 hover:shadow"
+                    className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-4"
                   >
-                    <div>
+                    <div className="min-w-0">
                       <span className="font-medium text-gray-900">{p.name}</span>
-                      <p className="mt-0.5 font-mono text-xs text-gray-400">{p.id}</p>
+                      <p className="mt-0.5 truncate font-mono text-xs text-gray-400" title={p.id}>
+                        {p.id}
+                      </p>
                     </div>
-                    <span className="text-sm text-gray-500">{p.taskCount} 任务</span>
+                    <span className="shrink-0 text-sm text-gray-500">{p.taskCount} 任务</span>
                   </Link>
+                  <button
+                    type="button"
+                    title="复制项目 ID"
+                    aria-label={`复制项目 ID：${p.name}`}
+                    onClick={() => void copyProjectId(p.id)}
+                    className={cn(
+                      "flex w-[88px] shrink-0 flex-col items-center justify-center gap-0.5 border-l border-gray-200 px-2 py-2 text-[11px] font-medium transition-colors sm:w-[100px]",
+                      copiedProjectId === p.id ?
+                        "bg-green-50 text-green-700"
+                      : "bg-gray-50/90 text-gray-600 hover:bg-red-50 hover:text-red-700",
+                    )}
+                  >
+                    {copiedProjectId === p.id ?
+                      <>
+                        <Check className="h-4 w-4 shrink-0" aria-hidden />
+                        已复制
+                      </>
+                    : <>
+                        <Copy className="h-4 w-4 shrink-0" aria-hidden />
+                        复制 ID
+                      </>
+                    }
+                  </button>
                 </li>
               ))}
             </ul>
