@@ -329,6 +329,15 @@ export async function POST(req: Request, ctx: Ctx) {
         { status: 503 },
       );
     }
+    if (code === "FETCH_FAILED") {
+      return NextResponse.json(
+        {
+          error: "无法连接智能服务（网络或超时）。请稍后重试；若仅在单位网络出现，可换一个网络再试。",
+          code: "FETCH_FAILED",
+        },
+        { status: 502 },
+      );
+    }
     if (isOpenRouterHttpError(e)) {
       const forbidden = e.httpStatus === 403;
       const userFriendly =
