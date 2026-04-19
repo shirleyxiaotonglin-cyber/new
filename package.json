@@ -32,6 +32,7 @@
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "heic2any": "^0.0.4",
     "jose": "^6.2.2",
     "lucide-react": "^1.8.0",
     "nanoid": "^5.1.9",

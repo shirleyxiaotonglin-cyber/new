@@ -74,7 +74,7 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
           setMessage({
             type: "err",
             text:
-              "无法在浏览器中处理该图片。若为 iPhone 相册照片，请在照片中分享为 JPG 后再传；或使用 JPG / PNG 截图。",
+              "头像图片处理失败。请换一张 JPG/PNG，或在 iPhone「照片」中将图片共享/存储为 JPG 后再选。",
           });
           return;
         }
