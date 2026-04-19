@@ -20,7 +20,7 @@
 | 文件存储 | **Supabase Storage + service role** | 对象存储 + 签名 URL；**直传**可绕开 Serverless 单请求体积极限。 |
 | 富交互 | **@dnd-kit** | 看板拖拽、可访问性较好。 |
 | 图表 | **Recharts** | 项目内报表/工作负载等轻量图表。 |
-| 图片处理 | **sharp** | 头像压缩/转 JPEG，控制 data URL 体积。 |
+| 图片处理 | **sharp** | 头像压缩/转 JPEG；生产构建须在 `next.config` 中将 `sharp` 列入 `serverComponentsExternalPackages`，否则易在服务端打包失败。 |
 | 实时 | **SSE（ReadableStream）+ 进程内 EventEmitter** | 实现简单；**单 Node 进程**内多标签页/多连接可收同步事件。水平扩展需换 **Redis Pub/Sub** 等（见 `src/lib/project-realtime.ts` 注释）。 |
 | 大模型 | **OpenRouter（HTTP）** | 统一对接多厂商模型；仅服务端持 Key；可配 `HTTP-Referer` / `X-Title` 满足平台要求。 |
 
@@ -98,6 +98,8 @@ sequenceDiagram
 
 **关键决策**：大文件 **不经** Next Route Handler body；仅元数据与小 JSON 经过 API。
 
+**直传请求体格式（与 `@supabase/storage-js` 的 `uploadToSignedUrl` 一致）**：对 `signedUrl` 使用 `PUT`，body 为 `multipart/form-data`，包含字段 `cacheControl`（如 `3600`）与空字段名下的文件 part；**不要**用整段 body 的单一 `Content-Type` 直传原始 `File`，否则 Storage 常返回 **400**。
+
 #### 1.3.3 项目内实时同步（SSE）
 
 ```mermaid
@@ -120,10 +122,12 @@ flowchart LR
 
 | 路径 | 作用 |
 |------|------|
+| `page.tsx` | 未登录时营销首页（六项核心能力：项目与任务、甘特、协作、消息、资源中心、AI）；已登录则重定向至首个组织。 |
 | `login/page.tsx` | 登录/注册切换、演示账号、忘记密码入口。 |
 | `org/[orgId]/layout.tsx` | 组织上下文、导航与用户摘要。 |
 | `org/[orgId]/project/[projectId]/page.tsx` | 项目工作台入口（甘特等默认视图由组件 prop 决定）。 |
 | `org/[orgId]/project/[projectId]/assets/page.tsx` | 项目级交付物汇总（资源中心页面）。 |
+| `public/site/index.html` | 可与 Next 同域名部署的静态官网，核心能力与 `page.tsx` 文案对齐。 |
 
 ### 2.2 API 路由（按业务域）
 
@@ -134,7 +138,7 @@ flowchart LR
 | 任务 | `api/tasks/[taskId]/*` | 任务字段、评论、聊天、交付物 CRUD + **sign-upload / complete-upload**。 |
 | 协作实时 | `api/projects/[projectId]/stream`, `presence` | SSE + 在线状态心跳。 |
 | 私信 | `api/chat/dm/*`, `api/orgs/[orgId]/dm-threads` | 1v1 线程与消息。 |
-| 存储诊断 | `api/diagnostics`, `api/me/avatar` | 自检与头像（data URL 落库）。 |
+| 存储诊断 | `api/diagnostics`, `api/me/avatar` | 自检含 **DB 连通**、**sharp**、存储桶；头像在 Storage 桶为 **public** 时可存 HTTPS 短链，否则仍为 **data URL** 写入 Postgres。 |
 
 ### 2.3 权限模型（`src/lib/access.ts`）
 

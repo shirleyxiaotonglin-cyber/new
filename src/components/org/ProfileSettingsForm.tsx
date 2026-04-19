@@ -1,9 +1,23 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Camera, Loader2, Save } from "lucide-react";
 import { compressAvatarForUpload } from "@/lib/compress-avatar-client";
+
+function formatAvatarUploadError(payload: Record<string, unknown>): string {
+  const err = payload.error;
+  if (typeof err === "string" && err.trim()) return err;
+  if (err != null) {
+    try {
+      const s = JSON.stringify(err);
+      return s.length > 160 ? `上传失败：${s.slice(0, 160)}…` : `上传失败：${s}`;
+    } catch {
+      return "上传失败（服务器返回了无法解析的信息）";
+    }
+  }
+  return "上传失败，请稍后再试或换一张较小的 JPG/PNG。";
+}
 
 export type ProfileSettingsFormProps = {
   orgId: string;
@@ -39,6 +53,12 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
 
   const showPwdHint = emailChanged || emailDirty;
 
+  /** 上传过程中勿用旧的 RSC props 覆盖本地预览，避免误判「上传失败」 */
+  useEffect(() => {
+    if (uploading) return;
+    setAvatarUrl(initial.avatarUrl);
+  }, [initial.avatarUrl, uploading]);
+
   const onPickAvatar = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -47,11 +67,16 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
       setUploading(true);
       setMessage(null);
       try {
-        let toUpload = file;
+        let toUpload: File;
         try {
           toUpload = await compressAvatarForUpload(file);
         } catch {
-          /* 压缩失败时仍尝试原图（小图或可解码格式） */
+          setMessage({
+            type: "err",
+            text:
+              "无法在浏览器中处理该图片。若为 iPhone 相册照片，请在照片中分享为 JPG 后再传；或使用 JPG / PNG 截图。",
+          });
+          return;
         }
         const fd = new FormData();
         fd.append("file", toUpload);
@@ -60,27 +85,52 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
           body: fd,
           credentials: "include",
         });
-        const j = (await res.json()) as {
-          avatarUrl?: string;
-          error?: string;
-          detail?: string;
-        };
+
+        const raw = await res.text();
+        let j: Record<string, unknown> = {};
+        if (raw) {
+          try {
+            j = JSON.parse(raw) as Record<string, unknown>;
+          } catch {
+            setMessage({
+              type: "err",
+              text:
+                res.status === 413 ?
+                  "上传体积超过限制，请换一张更小的图片。"
+                : `上传失败（HTTP ${res.status}）。若持续出现，请稍后再试。`,
+            });
+            return;
+          }
+        }
+
         if (!res.ok) {
-          const base = typeof j.error === "string" ? j.error : "上传失败";
+          const base = formatAvatarUploadError(j);
+          const code =
+            typeof j.code === "string" && j.code
+              ? `（错误码 ${j.code}${j.code === "P1001" ? "：数据库未连上" : ""}）`
+              : "";
           const hint =
             process.env.NODE_ENV === "development" && typeof j.detail === "string"
               ? `\n${j.detail}`
               : "";
-          setMessage({ type: "err", text: `${base}${hint}` });
+          setMessage({ type: "err", text: `${base}${code}${hint}` });
           return;
         }
-        if (j.avatarUrl) {
-          setAvatarUrl(j.avatarUrl);
+
+        const okFlag = j.ok === true;
+        const legacyUrl = typeof j.avatarUrl === "string" ? j.avatarUrl : null;
+        if (okFlag || legacyUrl) {
+          if (legacyUrl) setAvatarUrl(legacyUrl);
           setMessage({ type: "ok", text: "头像已更新" });
           router.refresh();
+        } else {
+          setMessage({
+            type: "err",
+            text: "保存结果异常，请刷新页面查看头像是否已更新。",
+          });
         }
       } catch {
-        setMessage({ type: "err", text: "上传失败，请重试" });
+        setMessage({ type: "err", text: "网络异常，上传未完成。请检查连接后重试。" });
       } finally {
         setUploading(false);
       }

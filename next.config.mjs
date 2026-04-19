@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  /** 避免 sharp 被打进 Route Handler bundle，引发运行时加载失败（头像上传 500）。 */
+  experimental: {
+    serverComponentsExternalPackages: ["sharp"],
+  },
   /** 减轻部分环境下 HMR / 监听不稳定；文件系统异常时可设环境变量 WATCH_POLL=1 */
   webpack: (config, { dev, isServer }) => {
     if (dev) {

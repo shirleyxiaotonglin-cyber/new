@@ -211,6 +211,15 @@ export function TaskDeliverablesSection({
         }
 
         try {
+          /**
+           * 与 @supabase/storage-js 的 `uploadToSignedUrl` 一致：对 sign 返回的 URL 使用 **PUT + multipart FormData**，
+           * 不能对整段 body 设单一 Content-Type 直传二进制，否则 Supabase Storage 会返回 400。
+           * 参见：`cacheControl` 字段 + `append('', file)`。
+           */
+          const uploadBody = new FormData();
+          uploadBody.append("cacheControl", "3600");
+          uploadBody.append("", file, file.name);
+
           await new Promise<void>((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open("PUT", putUrl);
@@ -223,16 +232,36 @@ export function TaskDeliverablesSection({
             };
             xhr.onload = () => {
               if (xhr.status >= 200 && xhr.status < 300) resolve();
-              else
+              else {
+                let detail = "";
+                try {
+                  const parsed = JSON.parse(xhr.responseText) as {
+                    message?: string;
+                    error?: string;
+                    msg?: string;
+                  };
+                  detail =
+                    (typeof parsed.message === "string" && parsed.message) ||
+                    (typeof parsed.error === "string" && parsed.error) ||
+                    (typeof parsed.msg === "string" && parsed.msg) ||
+                    "";
+                } catch {
+                  if (xhr.responseText?.trim()) {
+                    detail = xhr.responseText.trim().slice(0, 280);
+                  }
+                }
                 reject(
                   new Error(
-                    `直传失败（HTTP ${xhr.status}）：请确认 Supabase 已创建与 SUPABASE_STORAGE_BUCKET 一致的存储桶且可写入。`,
+                    detail ?
+                      `直传失败（HTTP ${xhr.status}）：${detail}`
+                    : `直传失败（HTTP ${xhr.status}）：请确认存储桶可写且签名有效。`,
                   ),
                 );
+              }
             };
             xhr.onerror = () => reject(new Error("直传网络错误"));
-            xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-            xhr.send(file);
+            xhr.setRequestHeader("x-upsert", "false");
+            xhr.send(uploadBody);
           });
         } catch (e) {
           errs.push(`${file.name}：${e instanceof Error ? e.message : "直传失败"}`);
@@ -477,9 +506,8 @@ export function TaskDeliverablesSection({
                 : null}
                 {it.url ?
                   <a
-                    href={it.url}
-                    target="_blank"
-                    rel="noreferrer"
+                    href={`/api/tasks/${taskId}/deliverables/${it.id}`}
+                    download={it.fileName}
                     className="inline-flex items-center rounded border border-gray-200 px-1.5 py-0.5 text-[10px] text-red-700 hover:bg-red-50"
                   >
                     <Download className="h-3 w-3" aria-hidden />

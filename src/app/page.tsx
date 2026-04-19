@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  BarChart3,
-  Briefcase,
   FolderOpen,
   GanttChart,
-  Kanban,
+  LayoutList,
   MessageSquare,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -28,29 +27,34 @@ export default async function Home() {
 
   const features = [
     {
-      icon: Briefcase,
-      title: "项目管理",
-      desc: "组织 → 项目 → 任务层级；看板与列表协作，侧栏「我的项目」跨业务汇总。",
+      icon: LayoutList,
+      title: "项目与任务管理",
+      desc: "按组织、项目组织工作；看板/列表/任务侧栏中创建、编辑、状态与优先级、负责人与协助人、子任务、依赖与标签，并支持「我的任务」跨项目查看。",
     },
     {
       icon: GanttChart,
-      title: "甘特图",
-      desc: "时间轴视图、起止日期与依赖，进度与排期一目了然，可与看板并行使用。",
+      title: "甘特图系统",
+      desc: "时间轴与条带展示起止、进度与依赖，与看板/列表数据同源，便于排期与同步。",
+    },
+    {
+      icon: Users,
+      title: "多人协作",
+      desc: "组织与项目成员、角色与项目内权限；项目内可展示协作者在线与任务侧分配，支持活动与状态同步。",
     },
     {
       icon: MessageSquare,
-      title: "消息与协作",
-      desc: "消息中心私信、任务内讨论与系统通知；评论、@ 提醒与项目成员权限配合。",
+      title: "评论与消息",
+      desc: "任务内讨论、项目与系统活动；组织内私信与消息中心，与任务/项目数据关联。",
     },
     {
       icon: FolderOpen,
-      title: "文件资源中心",
-      desc: "任务侧上传交付物，项目资源页汇总、预览与下载；大文件可走对象存储直传。",
+      title: "文件与资源中心",
+      desc: "任务内上传交付物；项目「资源中心」汇总全项目文件，支持预览/下载，大文件可经对象存储直传。",
     },
     {
       icon: Sparkles,
       title: "AI 智能助手",
-      desc: "解析需求文本为任务草稿、计划与工作报告建议；按环境接入大模型，功能页可见当前模型。",
+      desc: "项目内用自然语言解析为任务批量创建（需配置 OpenRouter）；与手动建任务、侧栏编辑并存。",
     },
   ];
 
@@ -89,7 +93,8 @@ export default async function Home() {
             <span className="block sm:inline">一页掌握进度</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-center text-lg leading-relaxed text-gray-600">
-            统一管理项目与任务进度：看板、列表与甘特视图，配套角色权限与协作流程。适用于研发交付、市场活动等多类型项目协同。
+            从项目与任务、甘特排期，到成员协作、消息与文件，以及可选的 AI
+            建任务；各模块数据相互关联，在电脑与手机浏览器中即可使用。
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link
@@ -100,20 +105,35 @@ export default async function Home() {
             </Link>
           </div>
           <div className="mx-auto mt-16 max-w-4xl rounded-2xl border border-gray-200 bg-gray-50/80 p-6 shadow-inner sm:p-10">
-            <div className="flex flex-wrap items-center justify-center gap-8 text-center text-sm text-gray-600">
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-center text-sm text-gray-600">
+              <div className="flex items-center gap-2">
+                <LayoutList className="h-5 w-5 text-red-500" />
+                项目与任务
+              </div>
+              <div className="hidden h-8 w-px bg-gray-200 sm:block" />
               <div className="flex items-center gap-2">
                 <GanttChart className="h-5 w-5 text-red-500" />
-                时间轴 / 甘特
+                甘特排期
               </div>
               <div className="hidden h-8 w-px bg-gray-200 sm:block" />
               <div className="flex items-center gap-2">
-                <Kanban className="h-5 w-5 text-red-500" />
-                看板拖拽
+                <Users className="h-5 w-5 text-red-500" />
+                多人协作
               </div>
               <div className="hidden h-8 w-px bg-gray-200 sm:block" />
               <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-red-500" />
-                数据看板
+                <MessageSquare className="h-5 w-5 text-red-500" />
+                评论与消息
+              </div>
+              <div className="hidden h-8 w-px bg-gray-200 sm:block" />
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-5 w-5 text-red-500" />
+                文件与资源
+              </div>
+              <div className="hidden h-8 w-px bg-gray-200 sm:block" />
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-red-500" />
+                AI 助手
               </div>
             </div>
           </div>
@@ -123,7 +143,7 @@ export default async function Home() {
       <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
         <h2 className="text-center text-2xl font-bold text-gray-900 sm:text-3xl">核心能力</h2>
         <p className="mx-auto mt-3 max-w-xl text-center text-gray-600">
-          响应式布局，适配电脑与移动浏览器；核心操作在桌面与手机上均可完成。
+          以下为产品内已实现能力的概括；详细以登录后的界面为准。
         </p>
         <ul className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {features.map(({ icon: Icon, title, desc }) => (

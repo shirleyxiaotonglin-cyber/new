@@ -42,18 +42,35 @@ export async function GET() {
   const supabaseAdmin = getSupabaseAdmin();
   const deliverablesBucket = getDeliverablesBucket();
   let storageBucketOk = false;
+  let deliverablesBucketPublic: boolean | null = null;
   if (!supabaseAdmin) {
     hints.push(
       "未配置 Supabase 凭证：交付物与资源中心直传需 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY；并在 Supabase 创建与 SUPABASE_STORAGE_BUCKET 同名的私有存储桶。",
     );
   } else {
-    const { error: bErr } = await supabaseAdmin.storage.getBucket(deliverablesBucket);
+    const { data: bucketRow, error: bErr } = await supabaseAdmin.storage.getBucket(deliverablesBucket);
     storageBucketOk = !bErr;
+    deliverablesBucketPublic = bucketRow?.public ?? null;
     if (bErr) {
       hints.push(
         `无法访问存储桶「${deliverablesBucket}」：在 Supabase → Storage 中创建该桶（或设置环境变量 SUPABASE_STORAGE_BUCKET 为已有桶名）。原因：${bErr.message}`,
       );
     }
+  }
+
+  let sharpOk = false;
+  try {
+    const sharpMod = await import("sharp");
+    const tiny = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEgwJ/lQGTZQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    await sharpMod.default(tiny).resize(1, 1).jpeg({ quality: 80 }).toBuffer();
+    sharpOk = true;
+  } catch (e) {
+    hints.push(
+      `sharp 自检失败（个人中心头像上传依赖）：${e instanceof Error ? e.message : String(e)}。请在生产构建中将 sharp 列为 serverComponentsExternalPackages（见 next.config）。`,
+    );
   }
 
   let dbOk = false;
@@ -107,7 +124,10 @@ export async function GET() {
         supabaseServiceRoleConfigured: Boolean(supabaseAdmin),
         deliverablesBucket,
         bucketOk: storageBucketOk,
+        /** `true` 时头像可存 Supabase `getPublicUrl` 短链；`false` 时头像仍以 data URL 写入 Postgres */
+        deliverablesBucketPublic,
       },
+      sharp: { ok: sharpOk },
       legacySqliteFile: { path: legacySqlite, exists: legacySqliteExists },
       db: { connected: dbOk, error },
       counts,

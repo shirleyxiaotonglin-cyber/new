@@ -195,7 +195,7 @@ export function ProjectAssetsHub({
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     <Link
-                      href={`/org/${orgId}/project/${projectId}?task=${encodeURIComponent(it.taskId)}`}
+                      href={`/org/${orgId}/project/${projectId}?task=${encodeURIComponent(it.taskId)}&view=assets`}
                       className="text-red-700 hover:underline"
                     >
                       {it.taskTitle}
@@ -216,9 +216,8 @@ export function ProjectAssetsHub({
                     : null}
                     {it.url ?
                       <a
-                        href={it.url}
-                        target="_blank"
-                        rel="noreferrer"
+                        href={`/api/tasks/${it.taskId}/deliverables/${it.id}`}
+                        download={it.fileName}
                         className="inline-flex items-center text-red-700 hover:underline"
                       >
                         <Download className="h-4 w-4" aria-hidden />

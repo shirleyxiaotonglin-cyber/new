@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -55,6 +55,7 @@ import {
 } from "@/components/chat/DirectChatDrawer";
 import { TaskChatSection } from "@/components/chat/TaskChatSection";
 import { TaskDeliverablesSection } from "@/components/project/TaskDeliverablesSection";
+import { ProjectAssetsHub } from "@/components/project/ProjectAssetsHub";
 import { formatActivityDescription } from "@/lib/task-update-summary";
 import { useUserRealtime, type DirectMessageEvent } from "@/hooks/useUserRealtime";
 import { userDisplayName } from "@/lib/display-user";
@@ -108,7 +109,8 @@ type View =
   | "gantt"
   | "dashboard"
   | "activity"
-  | "ai";
+  | "ai"
+  | "assets";
 
 type AnalyticsBundle = {
   summary: {
@@ -258,12 +260,11 @@ export function ProjectWorkspace({
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const pathname = usePathname();
   const taskFromUrl = searchParams.get("task");
-  const assetsHref = `/org/${orgId}/project/${projectId}/assets`;
-  const assetsActive = Boolean(pathname && pathname.includes(assetsHref));
 
-  const [view, setView] = useState<View>(defaultView);
+  const [view, setView] = useState<View>(() =>
+    searchParams.get("view") === "assets" ? "assets" : defaultView,
+  );
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [projectName, setProjectName] = useState("");
   const [projectMembers, setProjectMembers] = useState<ProjectMemberOption[]>([]);
@@ -333,6 +334,34 @@ export function ProjectWorkspace({
   /** 私聊 SSE：进入项目即可收推送（无需先打开抽屉） */
   const [dmPush, setDmPush] = useState<DmPushPayload | null>(null);
   const clearDmPush = useCallback(() => setDmPush(null), []);
+
+  useEffect(() => {
+    const v = searchParams.get("view");
+    if (v === "assets") setView("assets");
+    else setView((prev) => (prev === "assets" ? defaultView : prev));
+  }, [searchParams, defaultView]);
+
+  const setViewAndUrl = useCallback(
+    (next: View) => {
+      setView(next);
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === "assets") params.set("view", "assets");
+      else params.delete("view");
+      const qs = params.toString();
+      router.replace(`/org/${orgId}/project/${projectId}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [orgId, projectId, router, searchParams],
+  );
+
+  const replaceProjectUrl = useCallback(
+    (patch: (p: URLSearchParams) => void) => {
+      const params = new URLSearchParams(searchParams.toString());
+      patch(params);
+      const qs = params.toString();
+      router.replace(`/org/${orgId}/project/${projectId}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [orgId, projectId, router, searchParams],
+  );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -551,7 +580,9 @@ export function ProjectWorkspace({
       setSaveError(null);
       setSelected(null);
       if (searchParams.get("task")) {
-        router.replace(`/org/${orgId}/project/${projectId}`, { scroll: false });
+        replaceProjectUrl((p) => {
+          p.delete("task");
+        });
       }
       await load({ silent: true });
       return true;
@@ -761,12 +792,13 @@ export function ProjectWorkspace({
                 ["dashboard", "报表", BarChart3],
                 ["activity", "动态", Search],
                 ["ai", "AI", Sparkles],
+                ["assets", "资源中心", FolderOpen],
               ] as const
             ).map(([id, label, Icon]) => (
               <button
                 key={id}
                 type="button"
-                onClick={() => setView(id as View)}
+                onClick={() => setViewAndUrl(id as View)}
                 className={cn(
                   "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm",
                   view === id
@@ -778,18 +810,6 @@ export function ProjectWorkspace({
                 {label}
               </button>
             ))}
-              <Link
-                href={assetsHref}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm",
-                  assetsActive
-                    ? "bg-red-600 text-white shadow-sm"
-                    : "text-gray-600 hover:bg-white hover:text-gray-900",
-                )}
-              >
-                <FolderOpen className="h-4 w-4" aria-hidden />
-                资源中心
-              </Link>
           </nav>
           </div>
         </div>
@@ -816,7 +836,7 @@ export function ProjectWorkspace({
       </header>
 
       <main className="mx-auto max-w-[1600px] px-4 py-6">
-        {tasks.length === 0 ? (
+        {tasks.length === 0 && view !== "assets" ? (
           <div className="mb-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
             暂无任务。点击上方「新建任务」手动添加，或切换到「AI」视图从文本批量导入。
           </div>
@@ -1256,6 +1276,15 @@ export function ProjectWorkspace({
             ) : null}
           </section>
         )}
+
+        {view === "assets" && (
+          <div className="border-t border-gray-100 pt-2">
+            <p className="mb-4 text-sm text-gray-600">
+              汇总本项目所有任务上传的交付物；文件存储在 Supabase Storage（或部署所配置的对象存储），数据库记录任务与文件的绑定关系。
+            </p>
+            <ProjectAssetsHub orgId={orgId} projectId={projectId} />
+          </div>
+        )}
       </main>
 
       {/* 任务侧栏：flex 列 + min-h-0 才能让内部 overflow-y-auto 真正出现滚动条 */}
@@ -1279,7 +1308,9 @@ export function ProjectWorkspace({
                 onClick={() => {
                   setSelected(null);
                   if (searchParams.get("task")) {
-                    router.replace(`/org/${orgId}/project/${projectId}`, { scroll: false });
+                    replaceProjectUrl((p) => {
+                      p.delete("task");
+                    });
                   }
                 }}
               >
