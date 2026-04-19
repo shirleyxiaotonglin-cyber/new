@@ -15,11 +15,19 @@ import {
 import { broadcastProjectSync } from "@/lib/project-realtime";
 import { coerceAnalyzeOutput, parseLenientJson } from "@/lib/analyze-task-json";
 
-/** 与单次 OpenRouter 超时（8s）+ 解析留余量，避免平台 10s 硬杀导致 502 */
-export const maxDuration = 10;
+/**
+ * Vercel Pro 等可调高；Hobby 仍可能被平台限制在约 10s（见文档）。
+ * 之前设为 10 + 8s 中止，慢模型（如 DeepSeek）极易误判为超时并只返回示例任务。
+ */
+export const maxDuration = 60;
 
-/** OpenRouter chat/completions；analyze 单请求须在约 8s 内结束 */
-const OPENROUTER_ANALYZE_TIMEOUT_MS = 8000;
+/** 等待 OpenRouter 首包完成的最长时间；可用环境变量覆盖（毫秒） */
+function getOpenRouterAnalyzeTimeoutMs(): number {
+  const raw = process.env.OPENROUTER_ANALYZE_TIMEOUT_MS?.trim();
+  const n = raw ? Number.parseInt(raw, 10) : NaN;
+  if (Number.isFinite(n) && n >= 5_000 && n <= 120_000) return n;
+  return 45_000;
+}
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
@@ -272,14 +280,26 @@ function buildMockPreviewRows(): PreviewRow[] {
   ];
 }
 
+function isLikelyAbortTimeout(e: unknown): boolean {
+  if (e instanceof Error && e.name === "AbortError") return true;
+  const msg = e instanceof Error ? e.message : String(e);
+  return /abort|aborted|超时/i.test(msg);
+}
+
 function openRouterFailureMessage(e: unknown): string {
   const code =
     e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
   if (code === "MISSING_API_KEY") {
     return "未配置智能服务密钥（OPENROUTER_API_KEY），请联系管理员。";
   }
-  if (code === "FETCH_FAILED" || code === "PARSE_ERROR") {
-    return "智能服务暂时不可用、响应为空或请求超时，请稍后重试。";
+  if (code === "PARSE_ERROR") {
+    return "智能服务未返回可用正文（可能为空），请稍后重试或缩短输入。";
+  }
+  if (code === "FETCH_FAILED") {
+    if (isLikelyAbortTimeout(e)) {
+      return "等待智能服务响应超时（模型较慢或单次推理耗时长）。请缩短输入、稍后重试；若部署在限制较严的环境，请联系管理员调高函数时限或换更快模型。";
+    }
+    return "无法连接智能服务或网络异常，请稍后重试。";
   }
   if (isOpenRouterHttpError(e)) {
     return e.httpStatus === 403 ?
@@ -358,8 +378,11 @@ export async function POST(req: Request, ctx: Ctx) {
       );
     }
 
+    const analyzeWaitMs = getOpenRouterAnalyzeTimeoutMs();
+    console.log("[ai/analyze] OpenRouter 等待上限 ms:", analyzeWaitMs);
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), OPENROUTER_ANALYZE_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), analyzeWaitMs);
 
     try {
       const { content, rawModel } = await openRouterComplete(chatMessages, {
