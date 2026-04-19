@@ -10,6 +10,18 @@ import {
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+/** 与个人中心头像一致：可为 data:image 大图或 https 外链；清空传 "" */
+const avatarPatchSchema = z.union([
+  z.literal(""),
+  z
+    .string()
+    .min(1)
+    .max(1_500_000)
+    .refine((s) => /^data:image\//i.test(s) || /^https?:\/\//i.test(s), {
+      message: "头像地址无效",
+    }),
+]);
+
 const PatchBody = z.object({
   name: z.string().min(1).max(80).optional(),
   username: z
@@ -25,7 +37,7 @@ const PatchBody = z.object({
   email: z.string().email().optional(),
   /** 修改邮箱时必须提供当前密码 */
   currentPassword: z.string().optional(),
-  avatarUrl: z.union([z.string().url().max(2048), z.literal("")]).optional(),
+  avatarUrl: avatarPatchSchema.optional(),
 });
 
 export async function GET() {

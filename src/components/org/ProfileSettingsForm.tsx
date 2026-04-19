@@ -60,9 +60,18 @@ export function ProfileSettingsForm({ orgId, initial }: ProfileSettingsFormProps
           body: fd,
           credentials: "include",
         });
-        const j = (await res.json()) as { avatarUrl?: string; error?: string };
+        const j = (await res.json()) as {
+          avatarUrl?: string;
+          error?: string;
+          detail?: string;
+        };
         if (!res.ok) {
-          setMessage({ type: "err", text: typeof j.error === "string" ? j.error : "上传失败" });
+          const base = typeof j.error === "string" ? j.error : "上传失败";
+          const hint =
+            process.env.NODE_ENV === "development" && typeof j.detail === "string"
+              ? `\n${j.detail}`
+              : "";
+          setMessage({ type: "err", text: `${base}${hint}` });
           return;
         }
         if (j.avatarUrl) {
