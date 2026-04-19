@@ -140,7 +140,7 @@ npm install
 npm run db:seed
 ```
 
-演示账号（与 `src/lib/demo-account.ts` / seed 一致）：`324236356@qq.com` / `12345678`。一键演示默认开启；关闭：`DISABLE_DEMO_LOGIN=true`。
+演示账号（与 `src/lib/demo-account.ts` / seed 一致）：`435236356@qq.com` / `12345678`。一键演示默认开启；关闭：`DISABLE_DEMO_LOGIN=true`。
 
 ---
 
