@@ -53,15 +53,19 @@ export function TaskDeliverablesSection({
   taskId,
   currentUserId,
   sectionTitle = "任务交付物",
+  /** 父组件在项目同步加载成功后递增，用于刷新本地上传列表（避免与他人上传不同步） */
+  reloadToken,
 }: {
   taskId: string;
   currentUserId: string | null;
   /** 侧栏中展示为「文件提交区」等 */
   sectionTitle?: string;
+  reloadToken?: number;
 }) {
   const [items, setItems] = useState<DeliverableItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [storageConfigured, setStorageConfigured] = useState(true);
+  /** null = 尚未从接口拉取，禁止上传，避免在「未开通存储」时误发请求 */
+  const [storageConfigured, setStorageConfigured] = useState<boolean | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,10 +87,11 @@ export function TaskDeliverablesSection({
       };
       if (!res.ok) throw new Error(typeof j.error === "string" ? j.error : "加载失败");
       setItems(Array.isArray(j.items) ? j.items : []);
-      setStorageConfigured(j.storageConfigured !== false);
+      setStorageConfigured(j.storageConfigured === true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
       setItems([]);
+      setStorageConfigured(false);
     } finally {
       setLoading(false);
     }
@@ -94,13 +99,17 @@ export function TaskDeliverablesSection({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, reloadToken]);
 
   async function uploadFiles(files: FileList | File[]) {
     const list = Array.from(files);
     if (list.length === 0) return;
-    if (!storageConfigured) {
-      setError("文件上传未开通，暂时无法上传。可把说明写在「任务内容」或请管理员开通存储。");
+    if (storageConfigured !== true) {
+      setError(
+        storageConfigured === false ?
+          "文件上传未开通：请在环境中配置 SUPABASE_URL 与 SUPABASE_SERVICE_ROLE_KEY，并创建 Storage 存储桶。"
+        : "正在检测存储配置，请稍候再试。",
+      );
       return;
     }
     setUploading(true);
@@ -119,19 +128,64 @@ export function TaskDeliverablesSection({
         if (ev.lengthComputable) setUploadPct(Math.round((ev.loaded / ev.total) * 100));
       };
 
-      const result = await new Promise<{ ok?: boolean; errors?: string[] }>((resolve, reject) => {
+      type UploadJson = {
+        ok?: boolean;
+        error?: string;
+        hint?: string;
+        uploaded?: { id: string }[];
+        errors?: string[];
+      };
+
+      const result = await new Promise<UploadJson>((resolve, reject) => {
         xhr.onload = () => {
+          let body: UploadJson = {};
           try {
-            resolve(JSON.parse(xhr.responseText || "{}") as { ok?: boolean; errors?: string[] });
+            body = JSON.parse(xhr.responseText || "{}") as UploadJson;
           } catch {
-            reject(new Error("响应解析失败"));
+            reject(new Error("服务器响应无效"));
+            return;
           }
+          const status = xhr.status;
+          if (status === 401) {
+            reject(new Error("请先登录后再上传。"));
+            return;
+          }
+          if (status === 403) {
+            reject(new Error(typeof body.error === "string" ? body.error : "无权上传"));
+            return;
+          }
+          if (status === 503) {
+            const msg = typeof body.error === "string" ? body.error : "文件存储未开通";
+            const hint = typeof body.hint === "string" ? ` ${body.hint}` : "";
+            setStorageConfigured(false);
+            reject(new Error(`${msg}${hint}`));
+            return;
+          }
+          if (status >= 400) {
+            reject(new Error(typeof body.error === "string" ? body.error : `上传失败（${status}）`));
+            return;
+          }
+
+          const uploaded = Array.isArray(body.uploaded) ? body.uploaded : [];
+          const errs = Array.isArray(body.errors) ? body.errors : [];
+          if (uploaded.length === 0) {
+            reject(new Error(errs.join("；") || "没有文件被保存，请重试或联系管理员。"));
+            return;
+          }
+          resolve(body);
         };
-        xhr.onerror = () => reject(new Error("网络错误"));
+        xhr.onerror = () => reject(new Error("网络错误，请检查连接后重试。"));
         xhr.send(fd);
       });
 
-      if (result.errors?.length) setError(result.errors.join("；"));
+      const uploaded = Array.isArray(result.uploaded) ? result.uploaded : [];
+      const errs = Array.isArray(result.errors) ? result.errors : [];
+      if (errs.length > 0) {
+        setError(`部分成功：${errs.join("；")}`);
+      }
+      if (uploaded.length > 0 && errs.length === 0) {
+        setError(null);
+      }
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "上传失败");
@@ -166,9 +220,9 @@ export function TaskDeliverablesSection({
         <FolderOpen className="h-4 w-4 text-red-600" aria-hidden />
         {sectionTitle}
       </div>
-      {!storageConfigured ?
+      {storageConfigured === false ?
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] text-amber-950">
-          文件云存储尚未开通：暂无法上传或下载附件，列表中可能仅有记录。如需使用请先联系管理员；也可在「任务内容」里说明线下交付方式。
+          文件云存储尚未开通：配置 Supabase Storage（SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY、存储桶）后即可上传并在资源中心汇总。在此之前可在「任务内容」说明线下交付方式。
         </p>
       : null}
 
@@ -196,7 +250,7 @@ export function TaskDeliverablesSection({
           multiple
           className="sr-only"
           accept="image/*,video/*,application/pdf,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.json,.js,.ts,.tsx,.css,.html"
-          disabled={uploading || !storageConfigured}
+          disabled={uploading || storageConfigured !== true}
           onChange={(e) => {
             const f = e.target.files;
             e.target.value = "";
@@ -218,7 +272,7 @@ export function TaskDeliverablesSection({
           </select>
           <button
             type="button"
-            disabled={uploading || !storageConfigured}
+            disabled={uploading || storageConfigured !== true}
             className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
             onClick={() => inputRef.current?.click()}
           >

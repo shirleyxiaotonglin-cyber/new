@@ -11,6 +11,8 @@ import {
   safeStorageFileName,
 } from "@/lib/deliverable-helpers";
 import { getDeliverablesBucket, getSupabaseAdmin } from "@/lib/supabase-storage";
+import { ActivityAction } from "@/lib/constants";
+import { broadcastProjectSync } from "@/lib/project-realtime";
 
 type Ctx = { params: Promise<{ taskId: string }> };
 
@@ -192,6 +194,27 @@ export async function POST(req: Request, ctx: Ctx) {
       await supabase.storage.from(bucket).remove([path]).catch(() => {});
       errors.push(`${file.name}：数据库写入失败`);
     }
+  }
+
+  if (uploaded.length > 0) {
+    const names = uploaded.map((u) => u.fileName);
+    const summary =
+      names.length === 1 ?
+        `上传了交付物「${names[0]}」`
+      : `上传了 ${names.length} 个文件：${names.slice(0, 5).join("、")}${names.length > 5 ? "…" : ""}`;
+    await prisma.activity.create({
+      data: {
+        taskId,
+        userId: session.sub,
+        action: ActivityAction.FILE_UPLOADED,
+        meta: JSON.stringify({ summaryLines: [summary] }),
+      },
+    });
+    broadcastProjectSync(task.projectId, {
+      kind: "deliverable",
+      taskId,
+      actorUserId: session.sub,
+    });
   }
 
   return NextResponse.json({

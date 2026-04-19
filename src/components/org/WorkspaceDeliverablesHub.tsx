@@ -35,7 +35,7 @@ export function WorkspaceDeliverablesHub({
 }) {
   const [items, setItems] = useState<HubRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [storageConfigured, setStorageConfigured] = useState(true);
+  const [storageConfigured, setStorageConfigured] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,9 +47,10 @@ export function WorkspaceDeliverablesHub({
       };
       if (!res.ok) throw new Error("加载失败");
       setItems(Array.isArray(j.items) ? j.items : []);
-      setStorageConfigured(j.storageConfigured !== false);
+      setStorageConfigured(j.storageConfigured === true);
     } catch {
       setItems([]);
+      setStorageConfigured(false);
     } finally {
       setLoading(false);
     }
@@ -57,6 +58,14 @@ export function WorkspaceDeliverablesHub({
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, [load]);
 
   return (
@@ -79,9 +88,9 @@ export function WorkspaceDeliverablesHub({
         </button>
       </div>
 
-      {!storageConfigured ?
+      {storageConfigured === false ?
         <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          云端存储尚未配置：列表可能仅有记录，下载链接不可用。请联系管理员或在项目内任务详情中说明线下交付方式。
+          云端存储尚未配置：列表可能仅有记录，下载链接不可用。请在服务端配置 SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY 与存储桶。
         </p>
       : null}
 

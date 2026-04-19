@@ -308,6 +308,8 @@ export function ProjectWorkspace({
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDesc, setDraftDesc] = useState("");
   const [savingText, setSavingText] = useState(false);
+  /** 项目数据刷新后递增，驱动任务交付物列表重新拉取（与他人上传、动态同步对齐） */
+  const [deliverablesNonce, setDeliverablesNonce] = useState(0);
   const [projectIdCopied, setProjectIdCopied] = useState(false);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   /** 私聊抽屉 */
@@ -398,6 +400,7 @@ export function ProjectWorkspace({
       setAnalytics(ra.ok ? parseAnalytics(a) : null);
 
       setActivities(Array.isArray(act.activities) ? (act.activities as ActivityRow[]) : []);
+      setDeliverablesNonce((n) => n + 1);
     } catch {
       if (!silent) {
         setLoadError("加载失败，请检查网络后重试");
@@ -1311,6 +1314,7 @@ export function ProjectWorkspace({
               taskId={selected.id}
               currentUserId={meId}
               sectionTitle="文件提交区"
+              reloadToken={deliverablesNonce}
             />
 
             <div>
