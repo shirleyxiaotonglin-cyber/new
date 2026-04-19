@@ -1,8 +1,4 @@
 import { NextResponse } from "next/server";
-
-export const runtime = "nodejs";
-/** 大文件 multipart 上传时延长运行时间（如部署在 Vercel） */
-export const maxDuration = 60;
 import { nanoid } from "nanoid";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -17,6 +13,10 @@ import {
 import { getDeliverablesBucket, getSupabaseAdmin } from "@/lib/supabase-storage";
 import { ActivityAction } from "@/lib/constants";
 import { broadcastProjectSync } from "@/lib/project-realtime";
+
+export const runtime = "nodejs";
+/** 备用 multipart 上传；主路径为浏览器直传 Storage（见 sign-upload / complete-upload） */
+export const maxDuration = 60;
 
 type Ctx = { params: Promise<{ taskId: string }> };
 
@@ -78,6 +78,10 @@ export async function GET(_req: Request, ctx: Ctx) {
   return NextResponse.json({
     items,
     storageConfigured: storageOk,
+    /** 客户端直传上限（与签名字节一致）；默认 52MB */
+    maxUploadBytes: MAX_DELIVERABLE_BYTES,
+    /** 推荐使用直传，避免 Vercel 等对 API 请求体 ~4.5MB 的限制 */
+    uploadViaDirect: true,
   });
 }
 

@@ -6,8 +6,8 @@ import { sniffImageMime } from "@/lib/image-sniff";
 
 /** 编码后写入库的上限（Postgres TEXT + 响应体积） */
 const MAX_DATA_URL_LEN = 1_200_000;
-/** 未经过 sharp 时的原始文件上限（与 Vercel 单次请求上限留余量） */
-const MAX_RAW_BYTES = 4_000_000;
+/** 未经过 sharp 时的原始文件上限（Vercel 等对整条请求约 4.5MB，multipart 须留余量） */
+const MAX_RAW_BYTES = process.env.VERCEL ? 3_000_000 : 4_000_000;
 /** 兼容旧逻辑：sharp 不可用时的裸图上限 */
 const MAX_LEGACY_BYTES = 900_000;
 
@@ -123,15 +123,18 @@ export async function POST(req: Request) {
     console.error("[avatar] prisma update:", e);
     const code =
       e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
-    return NextResponse.json(
-      {
-        error:
-          code === "P2002"
-            ? "保存冲突，请重试"
-            : "保存头像失败，请稍后重试或联系管理员",
-      },
-      { status: 500 },
-    );
+    const meta =
+      e && typeof e === "object" && "meta" in e ?
+        (e as { meta?: { cause?: string } }).meta
+      : undefined;
+    const msg =
+      code === "P2002" ? "保存冲突，请重试"
+      : code === "P2022" || code === "P2021" ?
+        "数据库结构与当前代码不一致：请在服务端执行 prisma migrate deploy。"
+      : meta?.cause?.includes("connect") || code === "P1001" ?
+        "无法连接数据库：请检查 DATABASE_URL（部署环境变量是否已配置 Neon 等 Postgres）。"
+      : "保存头像失败，请稍后重试或联系管理员";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 
   return NextResponse.json({ avatarUrl: dataUrl });

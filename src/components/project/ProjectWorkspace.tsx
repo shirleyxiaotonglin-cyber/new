@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -29,6 +29,7 @@ import {
   Check,
   Columns3,
   Copy,
+  FolderOpen,
   GanttChart as GanttIcon,
   LayoutList,
   Loader2,
@@ -257,7 +258,10 @@ export function ProjectWorkspace({
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const taskFromUrl = searchParams.get("task");
+  const assetsHref = `/org/${orgId}/project/${projectId}/assets`;
+  const assetsActive = Boolean(pathname && pathname.includes(assetsHref));
 
   const [view, setView] = useState<View>(defaultView);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
@@ -774,6 +778,18 @@ export function ProjectWorkspace({
                 {label}
               </button>
             ))}
+              <Link
+                href={assetsHref}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm",
+                  assetsActive
+                    ? "bg-red-600 text-white shadow-sm"
+                    : "text-gray-600 hover:bg-white hover:text-gray-900",
+                )}
+              >
+                <FolderOpen className="h-4 w-4" aria-hidden />
+                资源中心
+              </Link>
           </nav>
           </div>
         </div>

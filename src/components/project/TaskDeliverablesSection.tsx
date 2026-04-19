@@ -71,6 +71,7 @@ export function TaskDeliverablesSection({
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState("");
   const [preview, setPreview] = useState<DeliverableItem | null>(null);
+  const [maxUploadBytes, setMaxUploadBytes] = useState(52 * 1024 * 1024);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const dropRef = useRef<HTMLDivElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -87,6 +88,7 @@ export function TaskDeliverablesSection({
         items?: DeliverableItem[];
         storageConfigured?: boolean;
         error?: string;
+        maxUploadBytes?: number;
       };
       if (!res.ok) {
         setItems([]);
@@ -97,6 +99,9 @@ export function TaskDeliverablesSection({
       setItems(Array.isArray(j.items) ? j.items : []);
       /** 仅以接口返回值为准；网络错误时不要假定「未开通存储」，否则会永久禁用上传 */
       setStorageConfigured(j.storageConfigured === true);
+      if (typeof j.maxUploadBytes === "number" && j.maxUploadBytes > 0) {
+        setMaxUploadBytes(j.maxUploadBytes);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
       setItems([]);
@@ -119,78 +124,118 @@ export function TaskDeliverablesSection({
       );
       return;
     }
+    for (const f of list) {
+      if (f.size > maxUploadBytes) {
+        setError(
+          `「${f.name}」超过单文件上限（约 ${Math.floor(maxUploadBytes / 1024 / 1024)}MB），请压缩后重试。`,
+        );
+        return;
+      }
+    }
     setUploading(true);
     setUploadPct(0);
     setError(null);
+    const errs: string[] = [];
+
     try {
-      const fd = new FormData();
-      list.forEach((f) => fd.append("file", f));
-      if (category) fd.append("category", category);
+      for (let i = 0; i < list.length; i++) {
+        const file = list[i];
+        const basePct = (i / list.length) * 100;
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `/api/tasks/${taskId}/deliverables`);
-      xhr.withCredentials = true;
-
-      xhr.upload.onprogress = (ev) => {
-        if (ev.lengthComputable) setUploadPct(Math.round((ev.loaded / ev.total) * 100));
-      };
-
-      type UploadJson = {
-        ok?: boolean;
-        error?: string;
-        hint?: string;
-        uploaded?: { id: string }[];
-        errors?: string[];
-      };
-
-      const result = await new Promise<UploadJson>((resolve, reject) => {
-        xhr.onload = () => {
-          let body: UploadJson = {};
-          try {
-            body = JSON.parse(xhr.responseText || "{}") as UploadJson;
-          } catch {
-            reject(new Error("服务器响应无效"));
-            return;
-          }
-          const status = xhr.status;
-          if (status === 401) {
-            reject(new Error("请先登录后再上传。"));
-            return;
-          }
-          if (status === 403) {
-            reject(new Error(typeof body.error === "string" ? body.error : "无权上传"));
-            return;
-          }
-          if (status === 503) {
-            const msg = typeof body.error === "string" ? body.error : "文件存储未开通";
-            const hint = typeof body.hint === "string" ? ` ${body.hint}` : "";
-            setStorageConfigured(false);
-            reject(new Error(`${msg}${hint}`));
-            return;
-          }
-          if (status >= 400) {
-            reject(new Error(typeof body.error === "string" ? body.error : `上传失败（${status}）`));
-            return;
-          }
-
-          const uploaded = Array.isArray(body.uploaded) ? body.uploaded : [];
-          const errs = Array.isArray(body.errors) ? body.errors : [];
-          if (uploaded.length === 0) {
-            reject(new Error(errs.join("；") || "没有文件被保存，请重试或联系管理员。"));
-            return;
-          }
-          resolve(body);
+        const signRes = await fetch(`/api/tasks/${taskId}/deliverables/sign-upload`, {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: file.name,
+            size: file.size,
+            mimeType: file.type || "application/octet-stream",
+            category: category || undefined,
+          }),
+        });
+        const signJ = (await signRes.json()) as {
+          signedUrl?: string;
+          path?: string;
+          meta?: { category: string; fileName: string; mimeType: string; size: number };
+          error?: string;
+          hint?: string;
         };
-        xhr.onerror = () => reject(new Error("网络错误，请检查连接后重试。"));
-        xhr.send(fd);
-      });
 
-      const uploaded = Array.isArray(result.uploaded) ? result.uploaded : [];
-      const errs = Array.isArray(result.errors) ? result.errors : [];
-      if (errs.length > 0) {
-        setError(`部分成功：${errs.join("；")}`);
+        if (!signRes.ok) {
+          if (signRes.status === 503) {
+            setStorageConfigured(false);
+            const hint = typeof signJ.hint === "string" ? ` ${signJ.hint}` : "";
+            errs.push(
+              `${file.name}：${typeof signJ.error === "string" ? signJ.error : "存储未开通"}${hint}`,
+            );
+          } else if (signRes.status === 401) {
+            errs.push(`${file.name}：请先登录`);
+          } else if (signRes.status === 403) {
+            errs.push(`${file.name}：${typeof signJ.error === "string" ? signJ.error : "无权上传"}`);
+          } else {
+            errs.push(`${file.name}：${typeof signJ.error === "string" ? signJ.error : `签发失败（${signRes.status}）`}`);
+          }
+          continue;
+        }
+
+        const putUrl = signJ.signedUrl;
+        if (!putUrl || !signJ.path || !signJ.meta) {
+          errs.push(`${file.name}：签发响应无效`);
+          continue;
+        }
+
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", putUrl);
+            xhr.upload.onprogress = (ev) => {
+              if (ev.lengthComputable) {
+                const slice = 100 / list.length;
+                const p = basePct + (ev.loaded / ev.total) * slice;
+                setUploadPct(Math.min(99, Math.round(p)));
+              }
+            };
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) resolve();
+              else
+                reject(
+                  new Error(
+                    `直传失败（HTTP ${xhr.status}）：请确认 Supabase 已创建与 SUPABASE_STORAGE_BUCKET 一致的存储桶且可写入。`,
+                  ),
+                );
+            };
+            xhr.onerror = () => reject(new Error("直传网络错误"));
+            xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+            xhr.send(file);
+          });
+        } catch (e) {
+          errs.push(`${file.name}：${e instanceof Error ? e.message : "直传失败"}`);
+          continue;
+        }
+
+        const doneRes = await fetch(`/api/tasks/${taskId}/deliverables/complete-upload`, {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: signJ.path,
+            category: signJ.meta.category,
+            fileName: signJ.meta.fileName,
+            mimeType: signJ.meta.mimeType,
+            size: signJ.meta.size,
+          }),
+        });
+        const doneJ = (await doneRes.json()) as { error?: string };
+        if (!doneRes.ok) {
+          errs.push(`${file.name}：${typeof doneJ.error === "string" ? doneJ.error : "保存记录失败"}`);
+        }
       }
-      if (uploaded.length > 0 && errs.length === 0) {
+
+      if (errs.length > 0) {
+        setError(errs.join("；"));
+      } else {
         setError(null);
       }
       await load();
@@ -292,7 +337,7 @@ export function TaskDeliverablesSection({
           </button>
         </div>
         <p className="mt-2 text-[10px] text-gray-500">
-          支持拖拽多个文件到此；单文件最大约 52MB。存储未配置时上传将提示失败。
+          支持拖拽多个文件。单文件最大约 {Math.floor(maxUploadBytes / 1024 / 1024)}MB，经浏览器直传至对象存储，不经过应用服务器，可突破 Vercel 等对 API 体积极限。存储未配置时上传将提示失败。
         </p>
         {storageConfigured === null && !loading ?
           <button

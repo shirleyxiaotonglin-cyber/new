@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getOpenRouterAttribution } from "@/lib/openrouter";
+import { getDeliverablesBucket, getSupabaseAdmin } from "@/lib/supabase-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,23 @@ export async function GET() {
     hints.push(
       "DATABASE_URL 仍为 SQLite（file:）。当前 schema 使用 PostgreSQL；请改用 postgres 连接串（见 DEPLOY.md、.env.example）",
     );
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const deliverablesBucket = getDeliverablesBucket();
+  let storageBucketOk = false;
+  if (!supabaseAdmin) {
+    hints.push(
+      "未配置 Supabase 凭证：交付物与资源中心直传需 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY；并在 Supabase 创建与 SUPABASE_STORAGE_BUCKET 同名的私有存储桶。",
+    );
+  } else {
+    const { error: bErr } = await supabaseAdmin.storage.getBucket(deliverablesBucket);
+    storageBucketOk = !bErr;
+    if (bErr) {
+      hints.push(
+        `无法访问存储桶「${deliverablesBucket}」：在 Supabase → Storage 中创建该桶（或设置环境变量 SUPABASE_STORAGE_BUCKET 为已有桶名）。原因：${bErr.message}`,
+      );
+    }
   }
 
   let dbOk = false;
@@ -85,6 +103,11 @@ export async function GET() {
       openRouterEffectiveHttpReferer: openRouterAttribution.omitAttribution
         ? null
         : openRouterAttribution.referer,
+      storage: {
+        supabaseServiceRoleConfigured: Boolean(supabaseAdmin),
+        deliverablesBucket,
+        bucketOk: storageBucketOk,
+      },
       legacySqliteFile: { path: legacySqlite, exists: legacySqliteExists },
       db: { connected: dbOk, error },
       counts,
