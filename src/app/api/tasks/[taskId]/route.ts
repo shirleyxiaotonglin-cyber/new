@@ -84,7 +84,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
   if (!projectRow) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
-  const orgId = projectRow.orgId;
 
   const membersBefore = await prisma.projectMember.findMany({
     where: { projectId: existing.projectId },

@@ -480,11 +480,19 @@ export function ProjectWorkspace({
     });
   }, [tasks]);
 
+  const selectedId = selected?.id;
+  const selectedTitle = selected?.title;
+  const selectedDescription = selected?.description;
+
   useEffect(() => {
-    if (!selected) return;
-    setDraftTitle(selected.title);
-    setDraftDesc(selected.description ?? "");
-  }, [selected?.id, selected?.title, selected?.description]);
+    if (!selectedId) {
+      setDraftTitle("");
+      setDraftDesc("");
+      return;
+    }
+    setDraftTitle(selectedTitle ?? "");
+    setDraftDesc(selectedDescription ?? "");
+  }, [selectedId, selectedTitle, selectedDescription]);
 
   useEffect(() => {
     if (loading || loadError) return;
