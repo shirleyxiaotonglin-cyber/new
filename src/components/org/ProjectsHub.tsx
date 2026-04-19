@@ -7,6 +7,7 @@ import { Check, Copy, FolderPlus, Loader2, LogIn, Rocket, Trash2 } from "lucide-
 import { ProjectTemplate } from "@/lib/constants";
 import { copyTextToClipboard } from "@/lib/copy-text";
 import { cn } from "@/lib/cn";
+import { WorkspaceDeliverablesHub } from "@/components/org/WorkspaceDeliverablesHub";
 
 type ProjectRow = {
   id: string;
@@ -291,6 +292,8 @@ export function ProjectsHub({
             </ul>
           )}
         </section>
+
+        <WorkspaceDeliverablesHub workspaceOrgId={workspaceOrgId} />
       </div>
     </div>
   );

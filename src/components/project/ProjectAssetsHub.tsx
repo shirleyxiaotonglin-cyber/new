@@ -195,7 +195,7 @@ export function ProjectAssetsHub({
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     <Link
-                      href={`/org/${orgId}/project/${projectId}`}
+                      href={`/org/${orgId}/project/${projectId}?task=${encodeURIComponent(it.taskId)}`}
                       className="text-red-700 hover:underline"
                     >
                       {it.taskTitle}

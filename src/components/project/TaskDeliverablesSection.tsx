@@ -52,9 +52,12 @@ function formatSize(n: number) {
 export function TaskDeliverablesSection({
   taskId,
   currentUserId,
+  sectionTitle = "任务交付物",
 }: {
   taskId: string;
   currentUserId: string | null;
+  /** 侧栏中展示为「文件提交区」等 */
+  sectionTitle?: string;
 }) {
   const [items, setItems] = useState<DeliverableItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,7 +164,7 @@ export function TaskDeliverablesSection({
     <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700">
         <FolderOpen className="h-4 w-4 text-red-600" aria-hidden />
-        任务交付物
+        {sectionTitle}
       </div>
       {!storageConfigured ?
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] text-amber-950">

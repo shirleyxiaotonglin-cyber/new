@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -52,6 +53,8 @@ import {
   type DmPushPayload,
 } from "@/components/chat/DirectChatDrawer";
 import { TaskChatSection } from "@/components/chat/TaskChatSection";
+import { TaskDeliverablesSection } from "@/components/project/TaskDeliverablesSection";
+import { formatActivityDescription } from "@/lib/task-update-summary";
 import { useUserRealtime, type DirectMessageEvent } from "@/hooks/useUserRealtime";
 import { userDisplayName } from "@/lib/display-user";
 
@@ -119,6 +122,7 @@ type AnalyticsBundle = {
 type ActivityRow = {
   id: string;
   action: string;
+  meta?: string | null;
   createdAt: string;
   task: { title: string } | null;
   user: { name: string } | null;
@@ -251,6 +255,10 @@ export function ProjectWorkspace({
   /** 进入项目时默认视图，默认甘特图 */
   defaultView?: View;
 }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const taskFromUrl = searchParams.get("task");
+
   const [view, setView] = useState<View>(defaultView);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [projectName, setProjectName] = useState("");
@@ -297,6 +305,9 @@ export function ProjectWorkspace({
   } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftDesc, setDraftDesc] = useState("");
+  const [savingText, setSavingText] = useState(false);
   const [projectIdCopied, setProjectIdCopied] = useState(false);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   /** 私聊抽屉 */
@@ -317,11 +328,14 @@ export function ProjectWorkspace({
   const [dmPush, setDmPush] = useState<DmPushPayload | null>(null);
   const clearDmPush = useCallback(() => setDmPush(null), []);
 
-  /** 标题/描述防抖写入，避免未失焦就刷新导致未保存 */
-  const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const descSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const textDirty = useMemo(() => {
+    if (!selected) return false;
+    const d = draftDesc.trim();
+    const s = (selected.description ?? "").trim();
+    return draftTitle.trim() !== selected.title || d !== s;
+  }, [selected, draftTitle, draftDesc]);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
@@ -467,11 +481,18 @@ export function ProjectWorkspace({
   }, [tasks]);
 
   useEffect(() => {
-    return () => {
-      if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
-      if (descSaveTimerRef.current) clearTimeout(descSaveTimerRef.current);
-    };
-  }, [selected?.id]);
+    if (!selected) return;
+    setDraftTitle(selected.title);
+    setDraftDesc(selected.description ?? "");
+  }, [selected?.id, selected?.title, selected?.description]);
+
+  useEffect(() => {
+    if (loading || loadError) return;
+    const tid = taskFromUrl?.trim();
+    if (!tid) return;
+    const hit = tasks.find((x) => x.id === tid);
+    if (hit) setSelected(hit);
+  }, [loading, loadError, tasks, taskFromUrl]);
 
   useEffect(() => {
     if (aiPreview && aiPreview.length > 0) {
@@ -514,6 +535,9 @@ export function ProjectWorkspace({
       }
       setSaveError(null);
       setSelected(null);
+      if (searchParams.get("task")) {
+        router.replace(`/org/${orgId}/project/${projectId}`, { scroll: false });
+      }
       await load({ silent: true });
       return true;
     } catch {
@@ -564,6 +588,22 @@ export function ProjectWorkspace({
       setSaveError("网络异常，请稍后重试");
       return false;
     }
+  }
+
+  async function saveTaskFields() {
+    if (!selected) return;
+    const title = draftTitle.trim();
+    if (!title) {
+      setSaveError("任务名称不能为空");
+      return;
+    }
+    setSavingText(true);
+    const ok = await patchTask(selected.id, {
+      title,
+      description: draftDesc.trim() ? draftDesc : null,
+    });
+    setSavingText(false);
+    if (ok) setSaveError(null);
   }
 
   async function applyAssigneeByEmail() {
@@ -956,17 +996,27 @@ export function ProjectWorkspace({
 
         {view === "activity" && (
           <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            {activities.map((a) => (
-              <div
-                key={a.id}
-                className="flex flex-wrap gap-2 border-b border-gray-100 pb-3 text-sm last:border-0"
-              >
-                <span className="text-gray-400">{format(new Date(a.createdAt), "MM-dd HH:mm")}</span>
-                <span className="text-gray-800">{a.user?.name ?? "系统"}</span>
-                <span className="text-gray-500">{a.action}</span>
-                {a.task && <span className="text-red-600 font-medium">{a.task.title}</span>}
-              </div>
-            ))}
+            {activities.length === 0 ?
+              <p className="text-sm text-gray-500">暂无动态。</p>
+            : activities.map((a) => (
+                <div
+                  key={a.id}
+                  className="border-b border-gray-100 pb-4 text-sm last:border-0 last:pb-0"
+                >
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="text-gray-400">{format(new Date(a.createdAt), "MM-dd HH:mm")}</span>
+                    <span className="font-medium text-gray-900">{a.user?.name ?? "系统"}</span>
+                    <span className="text-gray-600">处理了任务</span>
+                    {a.task ?
+                      <span className="font-medium text-red-700">「{a.task.title}」</span>
+                    : null}
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-gray-700 leading-relaxed">
+                    {formatActivityDescription(a.action, a.meta ?? null)}
+                  </p>
+                </div>
+              ))
+            }
           </div>
         )}
 
@@ -1189,7 +1239,12 @@ export function ProjectWorkspace({
             <button
               type="button"
               className="text-red-100 hover:text-white"
-              onClick={() => setSelected(null)}
+              onClick={() => {
+                setSelected(null);
+                if (searchParams.get("task")) {
+                  router.replace(`/org/${orgId}/project/${projectId}`, { scroll: false });
+                }
+              }}
             >
               关闭
             </button>
@@ -1215,24 +1270,8 @@ export function ProjectWorkspace({
               <input
                 key={`${selected.id}-title`}
                 className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
-                defaultValue={selected.title}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  const taskId = selected.id;
-                  if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
-                  titleSaveTimerRef.current = setTimeout(() => {
-                    titleSaveTimerRef.current = null;
-                    void patchTask(taskId, { title: v });
-                  }, 850);
-                }}
-                onBlur={(e) => {
-                  if (titleSaveTimerRef.current) {
-                    clearTimeout(titleSaveTimerRef.current);
-                    titleSaveTimerRef.current = null;
-                  }
-                  const v = e.target.value;
-                  if (v !== selected.title) void patchTask(selected.id, { title: v });
-                }}
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
               />
             </div>
             <div>
@@ -1242,30 +1281,30 @@ export function ProjectWorkspace({
                 className="mt-1 w-full resize-y rounded border border-gray-300 bg-white px-2 py-1.5 text-gray-900"
                 rows={5}
                 placeholder="描述任务目标、验收标准等"
-                defaultValue={selected.description ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  const taskId = selected.id;
-                  const normalized = v.trim() ? v : null;
-                  if (descSaveTimerRef.current) clearTimeout(descSaveTimerRef.current);
-                  descSaveTimerRef.current = setTimeout(() => {
-                    descSaveTimerRef.current = null;
-                    void patchTask(taskId, { description: normalized });
-                  }, 850);
-                }}
-                onBlur={(e) => {
-                  if (descSaveTimerRef.current) {
-                    clearTimeout(descSaveTimerRef.current);
-                    descSaveTimerRef.current = null;
-                  }
-                  const v = e.target.value;
-                  const normalized = v.trim() ? v : null;
-                  if (normalized !== (selected.description ?? null)) {
-                    void patchTask(selected.id, { description: normalized });
-                  }
-                }}
+                value={draftDesc}
+                onChange={(e) => setDraftDesc(e.target.value)}
               />
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={!textDirty || savingText}
+                onClick={() => void saveTaskFields()}
+                className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+              >
+                {savingText ? "保存中…" : "保存修改"}
+              </button>
+              {textDirty ?
+                <span className="text-xs text-amber-700">标题或任务内容有未保存修改</span>
+              : null}
+            </div>
+
+            <TaskDeliverablesSection
+              taskId={selected.id}
+              currentUserId={meId}
+              sectionTitle="文件提交区"
+            />
+
             <div>
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs font-medium text-gray-500">负责人</label>
@@ -1304,7 +1343,7 @@ export function ProjectWorkspace({
               </select>
               <p className="mt-1 text-[11px] leading-snug text-gray-400">
                 下拉列表为已在项目中的成员；也可输入<strong>对方注册邮箱</strong>
-                ，保存后将其加入组织与本项目并设为负责人（须账号已存在）。
+                ，保存后将其加入本项目并设为负责人（须账号已存在）。
               </p>
               <div className="mt-2 flex gap-2">
                 <input

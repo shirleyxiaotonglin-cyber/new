@@ -8,6 +8,7 @@ import { writeAudit } from "@/lib/audit";
 import { taskDetailInclude } from "@/lib/task-includes";
 import { broadcastProjectSync } from "@/lib/project-realtime";
 import { findRegisteredUserByEmail, ensureProjectMember } from "@/lib/membership-invite";
+import { buildTaskUpdateSummaryLines } from "@/lib/task-update-summary";
 
 type Ctx = { params: Promise<{ taskId: string }> };
 
@@ -164,6 +165,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
     );
   }
 
+  const assistantIdsBefore = (
+    await prisma.taskAssistant.findMany({
+      where: { taskId },
+      select: { userId: true },
+    })
+  ).map((r) => r.userId);
+
   const updated = await prisma.$transaction(async (tx) => {
     const toEnsure = new Set<string>();
     if (patchAssigneeId) toEnsure.add(patchAssigneeId);
@@ -211,13 +219,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
     return full;
   });
 
-  const meta: Record<string, unknown> = { before: existing, after: updated };
+  const summaryLines = buildTaskUpdateSummaryLines(existing, updated, assistantIdsBefore);
   await prisma.activity.create({
     data: {
       taskId,
       userId: session.sub,
       action: ActivityAction.TASK_UPDATED,
-      meta: JSON.stringify(meta),
+      meta: JSON.stringify({ summaryLines }),
     },
   });
   await writeAudit(access.project.orgId, session.sub, "task", "update", { taskId });
