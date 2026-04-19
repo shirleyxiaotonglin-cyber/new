@@ -229,9 +229,12 @@ model DirectMessage {
   senderId  String
   body      String
   createdAt DateTime @default(now())
+  /// 私信附件（与任务交付物共用存储桶 + FileAsset）
+  fileAssetId String?
 
-  thread DirectThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  sender User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  thread    DirectThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender    User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  fileAsset FileAsset?   @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
 
   @@index([threadId, createdAt])
 }
@@ -353,6 +356,7 @@ model FileAsset {
   parentFile  FileAsset?   @relation("FileVersion", fields: [parentFileId], references: [id])
   childFiles  FileAsset[]  @relation("FileVersion")
   attachments Attachment[]
+  directMessages DirectMessage[]
 }
 
 /// action: TASK_CREATED | TASK_UPDATED | ...

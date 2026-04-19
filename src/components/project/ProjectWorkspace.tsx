@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -32,6 +33,7 @@ import {
   GanttChart as GanttIcon,
   LayoutList,
   Loader2,
+  MessageCircle,
   Pencil,
   User,
   Plus,
@@ -266,6 +268,7 @@ export function ProjectWorkspace({
   /** 进入项目时默认视图，默认甘特图 */
   defaultView?: View;
 }) {
+  const router = useRouter();
   const [view, setView] = useState<View>(defaultView);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [projectName, setProjectName] = useState("");
@@ -855,16 +858,32 @@ export function ProjectWorkspace({
                         <div className="flex flex-wrap items-center gap-2">
                           <span>{t.assignee?.name ?? "—"}</span>
                           {t.assignee && meId && t.assignee.id !== meId ? (
-                            <button
-                              type="button"
-                              className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
-                              onClick={() => {
-                                setContactUser(buildPeerProfileFromAssignee(t.assignee!, projectMembers));
-                              }}
-                            >
-                              <User className="mr-0.5 inline h-3 w-3" aria-hidden />
-                              查看资料
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                className="rounded border border-red-200 bg-white px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                                onClick={() => {
+                                  const q = new URLSearchParams({
+                                    peer: t.assignee!.id,
+                                    project: projectId,
+                                  });
+                                  router.push(`/org/${orgId}/messages?${q.toString()}`);
+                                }}
+                              >
+                                <MessageCircle className="mr-0.5 inline h-3 w-3" aria-hidden />
+                                私聊
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                                onClick={() => {
+                                  setContactUser(buildPeerProfileFromAssignee(t.assignee!, projectMembers));
+                                }}
+                              >
+                                <User className="mr-0.5 inline h-3 w-3" aria-hidden />
+                                资料
+                              </button>
+                            </>
                           ) : null}
                         </div>
                       </td>
@@ -1296,18 +1315,34 @@ export function ProjectWorkspace({
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs font-medium text-gray-500">负责人</label>
                 {selected.assignee && meId && selected.assignee.id !== meId ? (
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
-                    onClick={() => {
-                      setContactUser(
-                        buildPeerProfileFromAssignee(selected.assignee!, projectMembers),
-                      );
-                    }}
-                  >
-                    <User className="h-3.5 w-3.5" aria-hidden />
-                    查看资料
-                  </button>
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                      onClick={() => {
+                        const q = new URLSearchParams({
+                          peer: selected.assignee!.id,
+                          project: projectId,
+                        });
+                        router.push(`/org/${orgId}/messages?${q.toString()}`);
+                      }}
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" aria-hidden />
+                      私聊
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
+                      onClick={() => {
+                        setContactUser(
+                          buildPeerProfileFromAssignee(selected.assignee!, projectMembers),
+                        );
+                      }}
+                    >
+                      <User className="h-3.5 w-3.5" aria-hidden />
+                      查看资料
+                    </button>
+                  </div>
                 ) : null}
               </div>
               <select
@@ -1366,20 +1401,35 @@ export function ProjectWorkspace({
                           </span>
                         </label>
                         {meId && m.user.id !== meId ? (
-                          <button
-                            type="button"
-                            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
-                            onClick={() => {
-                              setContactUser({
-                                id: m.user.id,
-                                name: m.user.name,
-                                email: m.user.email,
-                                avatarUrl: m.user.avatarUrl ?? undefined,
-                              });
-                            }}
-                          >
-                            查看资料
-                          </button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              className="rounded border border-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-50"
+                              onClick={() => {
+                                const q = new URLSearchParams({
+                                  peer: m.user.id,
+                                  project: projectId,
+                                });
+                                router.push(`/org/${orgId}/messages?${q.toString()}`);
+                              }}
+                            >
+                              私聊
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded px-1.5 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50"
+                              onClick={() => {
+                                setContactUser({
+                                  id: m.user.id,
+                                  name: m.user.name,
+                                  email: m.user.email,
+                                  avatarUrl: m.user.avatarUrl ?? undefined,
+                                });
+                              }}
+                            >
+                              资料
+                            </button>
+                          </div>
                         ) : null}
                       </div>
                     );

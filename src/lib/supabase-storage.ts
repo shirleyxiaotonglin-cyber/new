@@ -16,3 +16,16 @@ export function getSupabaseAdmin(): SupabaseClient | null {
 export function getDeliverablesBucket(): string {
   return process.env.SUPABASE_STORAGE_BUCKET?.trim() || "deliverables";
 }
+
+/** 为已上传对象生成短时签名 URL（下载 / 预览） */
+export async function signStoragePath(
+  fileKey: string,
+  expiresSec = 3600,
+): Promise<string | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+  const bucket = getDeliverablesBucket();
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(fileKey, expiresSec);
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
+}

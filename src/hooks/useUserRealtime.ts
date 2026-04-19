@@ -11,6 +11,13 @@ export type DirectMessageEvent = {
     createdAt: string;
     senderId: string;
     sender: { id: string; name: string; avatarUrl: string | null };
+    file?: {
+      id: string;
+      name: string;
+      mimeType: string;
+      size: number;
+      url: string | null;
+    } | null;
   };
 };
 

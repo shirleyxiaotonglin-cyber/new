@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
-import { Loader2, MessageCircle, Send } from "lucide-react";
+import { FileUp, Loader2, MessageCircle, Paperclip, Send } from "lucide-react";
 import { useUserRealtime, type DirectMessageEvent } from "@/hooks/useUserRealtime";
 import { cn } from "@/lib/cn";
 
@@ -26,12 +26,25 @@ type DmThread = {
   lastMessage: { body: string; createdAt: string } | null;
 };
 
+function formatDmFileSize(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 type Msg = {
   id: string;
   body: string;
   createdAt: string;
   senderId: string;
   sender: { id: string; name: string; avatarUrl: string | null };
+  file?: {
+    id: string;
+    name: string;
+    mimeType: string;
+    size: number;
+    url: string | null;
+  } | null;
 };
 
 export function MessagesCenterClient({
@@ -55,8 +68,10 @@ export function MessagesCenterClient({
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [msgError, setMsgError] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const peerHandledRef = useRef<string | null>(null);
 
   const scrollBottom = () => {
@@ -151,22 +166,37 @@ export function MessagesCenterClient({
 
   async function sendDm() {
     const text = input.trim();
-    if (!text || !selectedThreadId || sending) return;
+    if ((!text && !pendingFile) || !selectedThreadId || sending) return;
     setSending(true);
     setMsgError(null);
     try {
-      const res = await fetch(`/api/chat/dm/${selectedThreadId}/messages`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: text }),
-      });
+      let res: Response;
+      if (pendingFile) {
+        const fd = new FormData();
+        fd.append("orgId", orgId);
+        fd.append("file", pendingFile);
+        if (text) fd.append("body", text);
+        res = await fetch(`/api/chat/dm/${selectedThreadId}/messages`, {
+          method: "POST",
+          credentials: "include",
+          body: fd,
+        });
+      } else {
+        res = await fetch(`/api/chat/dm/${selectedThreadId}/messages`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: text }),
+        });
+      }
       const j = (await res.json()) as { message?: Msg; error?: string };
       if (!res.ok) throw new Error(typeof j.error === "string" ? j.error : "发送失败");
       if (j.message) {
         setMessages((prev) => (prev.some((m) => m.id === j.message!.id) ? prev : [...prev, j.message!]));
       }
       setInput("");
+      setPendingFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       scrollBottom();
       void loadThreads();
     } catch (e) {
@@ -268,7 +298,7 @@ export function MessagesCenterClient({
             {!selectedThreadId ?
               <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-sm text-gray-500">
                 <MessageCircle className="h-10 w-10 text-gray-300" aria-hidden />
-                <p>选择左侧会话，或从项目任务中点击「前往消息中心发送消息」。</p>
+                <p>选择左侧会话，或从项目任务详情中点击「私聊」打开会话。</p>
               </div>
             : (
               <>
@@ -299,6 +329,37 @@ export function MessagesCenterClient({
                               <p className="mb-0.5 text-[10px] font-medium text-gray-500">{m.sender.name}</p>
                             : null}
                             <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                            {m.file ?
+                              <div
+                                className={`mt-2 rounded-lg border px-2 py-1.5 text-xs ${
+                                  mine ? "border-red-200 bg-red-500/30" : "border-gray-200 bg-white"
+                                }`}
+                              >
+                                <p className="flex items-center gap-1 font-medium">
+                                  <FileUp className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
+                                  <span className="truncate">{m.file.name}</span>
+                                </p>
+                                <p className={`mt-0.5 text-[10px] ${mine ? "text-red-100" : "text-gray-500"}`}>
+                                  {formatDmFileSize(m.file.size)} · {m.file.mimeType}
+                                </p>
+                                {m.file.url ?
+                                  <a
+                                    href={m.file.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`mt-1 inline-block font-medium underline ${
+                                      mine ? "text-white" : "text-red-700"
+                                    }`}
+                                  >
+                                    下载 / 打开
+                                  </a>
+                                : (
+                                  <p className={`mt-1 text-[10px] ${mine ? "text-red-100" : "text-gray-400"}`}>
+                                    暂无法生成下载链接（请检查对象存储配置）
+                                  </p>
+                                )}
+                              </div>
+                            : null}
                             <p
                               className={`mt-1 text-[10px] ${mine ? "text-red-100" : "text-gray-400"}`}
                             >
@@ -312,10 +373,48 @@ export function MessagesCenterClient({
                   <div ref={bottomRef} />
                 </div>
                 <div className="border-t border-gray-200 p-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="sr-only"
+                    accept="image/*,video/*,application/pdf,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.json,.js,.ts,.tsx,.css,.html"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      setPendingFile(f ?? null);
+                    }}
+                  />
+                  {pendingFile ?
+                    <p className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700">
+                      <span className="min-w-0 truncate">
+                        <Paperclip className="mr-1 inline h-3.5 w-3.5 text-gray-500" aria-hidden />
+                        {pendingFile.name}
+                      </span>
+                      <button
+                        type="button"
+                        className="shrink-0 text-red-600 hover:underline"
+                        onClick={() => {
+                          setPendingFile(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                      >
+                        移除
+                      </button>
+                    </p>
+                  : null}
                   <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={sending || !!msgError}
+                      className="inline-flex shrink-0 items-center self-end rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      title="添加附件"
+                      aria-label="添加附件"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Paperclip className="h-4 w-4" aria-hidden />
+                    </button>
                     <textarea
                       className="min-h-[44px] flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm"
-                      placeholder="输入消息…"
+                      placeholder={pendingFile ? "可选：为附件添加说明…" : "输入消息…"}
                       rows={2}
                       value={input}
                       disabled={sending || !!msgError}
@@ -329,7 +428,7 @@ export function MessagesCenterClient({
                     />
                     <button
                       type="button"
-                      disabled={sending || !input.trim()}
+                      disabled={sending || (!input.trim() && !pendingFile)}
                       className="inline-flex shrink-0 items-center gap-1 self-end rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                       onClick={() => void sendDm()}
                     >
