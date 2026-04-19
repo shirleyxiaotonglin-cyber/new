@@ -54,6 +54,7 @@ import { PeerContactModal, type PeerProfile } from "@/components/chat/PeerContac
 import { TaskChatSection } from "@/components/chat/TaskChatSection";
 import { TaskDeliverablesSection } from "@/components/project/TaskDeliverablesSection";
 import { AiAttributionNote } from "@/components/ai/AiAttributionNote";
+import { AI_TASK_PARSE_USER_MESSAGE } from "@/lib/ai-user-messages";
 
 type TaskRow = {
   id: string;
@@ -1088,13 +1089,26 @@ export function ProjectWorkspace({
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ text: aiText, apply: false }),
                     });
-                    const j = await res.json();
+                    const text = await res.text();
+                    let j: Record<string, unknown>;
+                    try {
+                      j = text.trim() ? (JSON.parse(text) as Record<string, unknown>) : {};
+                    } catch {
+                      setSaveError(AI_TASK_PARSE_USER_MESSAGE);
+                      setAiPreview(null);
+                      return;
+                    }
                     if (!res.ok) {
-                      setSaveError(apiErrorWithHint(j as Record<string, unknown>, "分析失败"));
+                      setSaveError(
+                        apiErrorWithHint(j, AI_TASK_PARSE_USER_MESSAGE),
+                      );
                       setAiPreview(null);
                       return;
                     }
                     setAiPreview(Array.isArray(j.tasks) ? j.tasks : []);
+                  } catch {
+                    setSaveError(AI_TASK_PARSE_USER_MESSAGE);
+                    setAiPreview(null);
                   } finally {
                     setAiLoading(false);
                   }
@@ -1122,19 +1136,31 @@ export function ProjectWorkspace({
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ text: aiText, apply: true }),
                     });
-                    const j = await res.json();
-                    if (!res.ok) {
-                      setSaveError(apiErrorWithHint(j as Record<string, unknown>, "创建失败"));
+                    const text = await res.text();
+                    let j: Record<string, unknown>;
+                    try {
+                      j = text.trim() ? (JSON.parse(text) as Record<string, unknown>) : {};
+                    } catch {
+                      setSaveError(AI_TASK_PARSE_USER_MESSAGE);
                       return;
                     }
-                    const n = typeof j.count === "number" ? j.count : j.tasks?.length ?? 0;
+                    if (!res.ok) {
+                      setSaveError(
+                        apiErrorWithHint(j, AI_TASK_PARSE_USER_MESSAGE),
+                      );
+                      return;
+                    }
+                    const createdTasks = Array.isArray(j.tasks) ? j.tasks : [];
+                    const n =
+                      typeof j.count === "number" ? j.count : createdTasks.length;
                     setAiNotice(`已创建 ${n} 条任务并同步到当前项目。`);
                     setAiPreview(null);
                     await load({ silent: true });
-                    const created = j.tasks;
-                    if (Array.isArray(created) && created.length > 0) {
-                      setSelected(normalizeTaskRow(created[0] as TaskRow));
+                    if (createdTasks.length > 0) {
+                      setSelected(normalizeTaskRow(createdTasks[0] as TaskRow));
                     }
+                  } catch {
+                    setSaveError(AI_TASK_PARSE_USER_MESSAGE);
                   } finally {
                     setAiApplyLoading(false);
                   }

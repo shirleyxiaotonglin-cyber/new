@@ -13,6 +13,7 @@ import {
   openRouterComplete,
 } from "@/lib/openrouter";
 import { broadcastProjectSync } from "@/lib/project-realtime";
+import { AI_TASK_PARSE_USER_MESSAGE } from "@/lib/ai-user-messages";
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
@@ -247,6 +248,12 @@ export async function POST(req: Request, ctx: Ctx) {
     rawJson = extractJsonObject(content);
   } catch (e: unknown) {
     const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : "";
+    if (code === "PARSE_ERROR") {
+      return NextResponse.json(
+        { error: AI_TASK_PARSE_USER_MESSAGE, code: "PARSE_ERROR" },
+        { status: 502 },
+      );
+    }
     if (code === "MISSING_API_KEY") {
       return NextResponse.json(
         {
@@ -274,7 +281,7 @@ export async function POST(req: Request, ctx: Ctx) {
 
     return NextResponse.json(
       {
-        error: "智能解析失败，请稍后重试或简化输入内容。",
+        error: AI_TASK_PARSE_USER_MESSAGE,
         code: "OPENROUTER_ERROR",
       },
       { status: 502 },
@@ -287,13 +294,19 @@ export async function POST(req: Request, ctx: Ctx) {
     const out = OutputSchema.safeParse(obj);
     if (!out.success) {
       return NextResponse.json(
-        { error: "模型返回格式无法解析", detail: out.error.flatten() },
+        {
+          error: AI_TASK_PARSE_USER_MESSAGE,
+          code: "OUTPUT_VALIDATION_ERROR",
+        },
         { status: 422 },
       );
     }
     structured = out.data;
   } catch {
-    return NextResponse.json({ error: "模型返回不是合法 JSON" }, { status: 422 });
+    return NextResponse.json(
+      { error: AI_TASK_PARSE_USER_MESSAGE, code: "JSON_SYNTAX" },
+      { status: 422 },
+    );
   }
 
   if (structured.tasks.length === 0) {
