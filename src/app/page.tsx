@@ -2,12 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   BarChart3,
+  Briefcase,
+  FolderOpen,
   GanttChart,
   Kanban,
-  LayoutDashboard,
-  Lock,
+  MessageSquare,
   Sparkles,
-  Users,
 } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -27,15 +27,30 @@ export default async function Home() {
   }
 
   const features = [
-    { icon: LayoutDashboard, title: "单一工作空间", desc: "项目归属各自业务侧；侧栏「我的项目」跨业务汇总。" },
-    { icon: Kanban, title: "看板 · 列表 · 甘特", desc: "多视图同步，拖拽改状态。" },
-    { icon: Users, title: "角色与协作", desc: "Owner / Admin / Member / Guest，评论与 @ 提醒。" },
-    { icon: Lock, title: "安全与审计", desc: "RBAC、操作审计日志，可接多租户 SaaS。" },
-    { icon: BarChart3, title: "报表与负载", desc: "完成率、延期风险、工作量分布。" },
+    {
+      icon: Briefcase,
+      title: "项目管理",
+      desc: "组织 → 项目 → 任务层级；看板与列表协作，侧栏「我的项目」跨业务汇总。",
+    },
+    {
+      icon: GanttChart,
+      title: "甘特图",
+      desc: "时间轴视图、起止日期与依赖，进度与排期一目了然，可与看板并行使用。",
+    },
+    {
+      icon: MessageSquare,
+      title: "消息与协作",
+      desc: "消息中心私信、任务内讨论与系统通知；评论、@ 提醒与项目成员权限配合。",
+    },
+    {
+      icon: FolderOpen,
+      title: "文件资源中心",
+      desc: "任务侧上传交付物，项目资源页汇总、预览与下载；大文件可走对象存储直传。",
+    },
     {
       icon: Sparkles,
-      title: "智能助手",
-      desc: "任务解析、计划与工作报告草稿；通过 OpenRouter 接入大语言模型，所用模型在各功能页展示。",
+      title: "AI 智能助手",
+      desc: "解析需求文本为任务草稿、计划与工作报告建议；按环境接入大模型，功能页可见当前模型。",
     },
   ];
 
