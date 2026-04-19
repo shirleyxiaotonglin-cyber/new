@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { parseApiError } from "@/lib/parse-api-error";
 import { PRODUCT_TAGLINE } from "@/lib/product-brand";
+import { DEMO_EMAIL } from "@/lib/demo-identity";
 
 type Mode = "login" | "register";
 
@@ -285,6 +286,10 @@ export default function LoginPage() {
               >
                 {loading ? "处理中…" : "演示账号一键登录"}
               </button>
+              <p className="text-center text-[11px] leading-relaxed text-gray-500">
+                与已有数据为同一账号：
+                <span className="font-mono text-gray-600"> {DEMO_EMAIL}</span>
+              </p>
             </>
           </div>
         </div>

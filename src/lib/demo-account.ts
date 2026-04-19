@@ -1,9 +1,9 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { OrgRole } from "@/lib/constants";
+import { DEMO_EMAIL } from "./demo-identity";
 
-/** 勿随意更换邮箱：更换后一键演示会登录到新 User，旧账号下的项目/任务仍在库里但当前会话看不到 */
-export const DEMO_EMAIL = "435236356@qq.com";
+export { DEMO_EMAIL } from "./demo-identity";
 export const DEMO_PASSWORD = "12345678";
 export const DEMO_ORG_SLUG = "acme-corp";
 
