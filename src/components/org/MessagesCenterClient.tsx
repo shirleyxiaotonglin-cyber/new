@@ -306,7 +306,7 @@ export function MessagesCenterClient({
             {!selectedThreadId ?
               <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-sm text-gray-500">
                 <MessageCircle className="h-10 w-10 text-gray-300" aria-hidden />
-                <p>选择左侧会话，或从项目任务详情中点击「私聊」打开会话。</p>
+                <p>选择左侧会话，或在项目任务详情中点击「私聊」跳转至此。</p>
               </div>
             : (
               <>
