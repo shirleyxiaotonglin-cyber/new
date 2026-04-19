@@ -369,7 +369,9 @@ export function ProjectWorkspace({
     if (!selected) return false;
     const d = draftDesc.trim();
     const s = (selected.description ?? "").trim();
-    return draftTitle.trim() !== selected.title || d !== s;
+    const t0 = draftTitle.trim();
+    const t1 = (selected.title ?? "").trim();
+    return t0 !== t1 || d !== s;
   }, [selected, draftTitle, draftDesc]);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
@@ -520,6 +522,7 @@ export function ProjectWorkspace({
   const selectedTitle = selected?.title;
   const selectedDescription = selected?.description;
 
+  /** 仅在切换所选任务时同步草稿。若随 tasks 刷新同步 title/description，会与实时加载打架并清空正在输入的内容（description 在 JSON 中常在 null / 省略之间切换）。 */
   useEffect(() => {
     if (!selectedId) {
       setDraftTitle("");
@@ -528,7 +531,8 @@ export function ProjectWorkspace({
     }
     setDraftTitle(selectedTitle ?? "");
     setDraftDesc(selectedDescription ?? "");
-  }, [selectedId, selectedTitle, selectedDescription]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只用 selectedId；勿把 selectedTitle/selectedDescription 列入依赖
+  }, [selectedId]);
 
   useEffect(() => {
     if (loading || loadError) return;
