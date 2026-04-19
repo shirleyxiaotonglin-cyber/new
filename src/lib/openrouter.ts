@@ -206,6 +206,8 @@ export async function openRouterComplete(
      * 否则会误解析失败；报告/计划等 prose 路由保持默认（false）。
      */
     skipRefusal?: boolean;
+    /** 与 AbortController 配合，在 Vercel 等环境限制单次 OpenRouter 等待时间 */
+    signal?: AbortSignal;
   },
 ): Promise<{ content: string; rawModel: string }> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
@@ -241,6 +243,7 @@ export async function openRouterComplete(
         method: "POST",
         headers: openRouterRequestHeaders(bearerKey),
         body: JSON.stringify(body),
+        signal: options?.signal,
       });
     } catch (cause: unknown) {
       const inner = cause instanceof Error ? cause.message : String(cause);

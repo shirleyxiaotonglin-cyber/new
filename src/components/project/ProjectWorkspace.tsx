@@ -1105,7 +1105,30 @@ export function ProjectWorkspace({
                       setAiPreview(null);
                       return;
                     }
-                    setAiPreview(Array.isArray(j.tasks) ? j.tasks : []);
+                    if (j.success === false) {
+                      setSaveError(
+                        typeof j.error === "string" ? j.error : AI_TASK_PARSE_USER_MESSAGE,
+                      );
+                      if (Array.isArray(j.tasks) && j.tasks.length > 0) {
+                        setAiPreview(j.tasks as NonNullable<typeof aiPreview>);
+                      } else {
+                        setAiPreview(null);
+                      }
+                      if (j.fallback === true) {
+                        setAiNotice(
+                          "当前为示例任务（智能服务不可用或解析失败时显示），请检查网络或稍后重试。",
+                        );
+                      }
+                      return;
+                    }
+                    if (j.success === true && Array.isArray(j.tasks)) {
+                      setAiPreview(j.tasks as NonNullable<typeof aiPreview>);
+                    } else if (j.success === undefined && Array.isArray(j.tasks)) {
+                      /* 兼容旧版 { applied, tasks } 无 success 字段 */
+                      setAiPreview(j.tasks as NonNullable<typeof aiPreview>);
+                    } else {
+                      setAiPreview(null);
+                    }
                   } catch {
                     setSaveError(AI_TASK_PARSE_USER_MESSAGE);
                     setAiPreview(null);
@@ -1148,6 +1171,19 @@ export function ProjectWorkspace({
                       setSaveError(
                         apiErrorWithHint(j, AI_TASK_PARSE_USER_MESSAGE),
                       );
+                      return;
+                    }
+                    if (j.success === false) {
+                      setSaveError(
+                        typeof j.error === "string" ? j.error : AI_TASK_PARSE_USER_MESSAGE,
+                      );
+                      return;
+                    }
+                    const applyOk =
+                      j.success === true ||
+                      (j.success === undefined && j.applied === true);
+                    if (!applyOk) {
+                      setSaveError(AI_TASK_PARSE_USER_MESSAGE);
                       return;
                     }
                     const createdTasks = Array.isArray(j.tasks) ? j.tasks : [];
