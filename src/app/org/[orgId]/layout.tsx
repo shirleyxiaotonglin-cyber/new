@@ -43,11 +43,22 @@ export default async function OrgLayout({
     department,
   };
 
+  const orgSwitcherOrgs = await prisma.orgMember.findMany({
+    where: { userId: session.sub },
+    include: { org: { select: { id: true, name: true } } },
+    orderBy: { joinedAt: "desc" },
+  }).then((rows) => rows.map((r) => ({ id: r.org.id, name: r.org.name })));
+
   return (
     <OrgAppShell
       navUser={navUser}
       sidebar={
-        <OrgSidebar orgId={orgId} orgName={member.org.name} navUser={navUser} />
+        <OrgSidebar
+          orgId={orgId}
+          orgName={member.org.name}
+          navUser={navUser}
+          orgSwitcherOrgs={orgSwitcherOrgs}
+        />
       }
     >
       {children}

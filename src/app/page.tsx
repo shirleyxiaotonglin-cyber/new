@@ -18,7 +18,8 @@ export default async function Home() {
   if (session) {
     const first = await prisma.orgMember.findFirst({
       where: { userId: session.sub },
-      orderBy: { joinedAt: "asc" },
+      /** 与 /api/auth/me 一致：最近加入（如被拉进某组织做任务）的工作区优先 */
+      orderBy: { joinedAt: "desc" },
     });
     if (first) {
       redirect(`/org/${first.orgId}`);

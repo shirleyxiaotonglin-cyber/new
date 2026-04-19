@@ -20,8 +20,17 @@ export async function GET(_req: Request, ctx: Ctx) {
   const m = await requireOrgMember(orgId, session.sub);
   if (!m) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+  /** 非组织 Owner/Admin 时只列出「已加入项目」；与 requireProjectAccess 一致，避免仅被加进组织却看到进不去的项目 */
+  const seeAllOrgProjects = m.role === OrgRole.OWNER || m.role === OrgRole.ADMIN;
+
   const projects = await prisma.project.findMany({
-    where: { orgId, status: { not: ProjectStatus.ARCHIVED } },
+    where: {
+      orgId,
+      status: { not: ProjectStatus.ARCHIVED },
+      ...(!seeAllOrgProjects
+        ? { members: { some: { userId: session.sub } } }
+        : {}),
+    },
     orderBy: { updatedAt: "desc" },
     include: {
       _count: { select: { tasks: true } },

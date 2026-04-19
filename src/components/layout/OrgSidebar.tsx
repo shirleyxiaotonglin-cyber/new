@@ -19,10 +19,13 @@ export function OrgSidebar({
   orgId,
   orgName,
   navUser,
+  orgSwitcherOrgs,
 }: {
   orgId: string;
   orgName: string;
   navUser: OrgNavUser;
+  /** 用户加入的多个工作区，用于手动切换；与「被拉进某组织后默认进该空间」的登录策略配合 */
+  orgSwitcherOrgs: { id: string; name: string }[];
 }) {
   const pathname = usePathname();
   const base = `/org/${orgId}`;
@@ -86,6 +89,31 @@ export function OrgSidebar({
         <p className="mt-3 truncate border-t border-red-500/50 pt-3 text-sm font-medium text-red-50" title={orgName}>
           {orgName}
         </p>
+        {orgSwitcherOrgs.length > 1 ? (
+          <div className="mt-2 border-t border-red-500/50 pt-2">
+            <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-200/90">
+              切换工作空间
+            </p>
+            <ul className="mt-1.5 max-h-32 space-y-0.5 overflow-y-auto text-sm">
+              {orgSwitcherOrgs.map((o) => (
+                <li key={o.id}>
+                  {o.id === orgId ?
+                    <span className="block truncate rounded-md bg-red-800/50 px-2 py-1.5 font-medium text-white">
+                      {o.name}
+                    </span>
+                  : <Link
+                      href={`/org/${o.id}/projects`}
+                      className="block truncate rounded-md px-2 py-1.5 text-red-50/95 transition hover:bg-red-700/60"
+                      title={o.name}
+                    >
+                      {o.name}
+                    </Link>
+                  }
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <div className="mt-3 border-t border-red-500/50 pt-3">
           <OrgNavUserSidebarCard user={navUser} />
         </div>
