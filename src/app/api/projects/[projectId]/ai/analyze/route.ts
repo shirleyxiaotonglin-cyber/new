@@ -16,6 +16,12 @@ import { broadcastProjectSync } from "@/lib/project-realtime";
 import { AI_TASK_PARSE_USER_MESSAGE } from "@/lib/ai-user-messages";
 import { coerceAnalyzeOutput, parseLenientJson } from "@/lib/analyze-task-json";
 
+/**
+ * Vercel 等环境默认 Serverless 约 10s，易在 OpenRouter 慢请求时把 `fetch` 判为失败（FETCH_FAILED）。
+ * 提高上限；Hobby 计划仍可能被平台 cap 在 10s，需 Pro 或换更快模型才稳定。
+ */
+export const maxDuration = 60;
+
 type Ctx = { params: Promise<{ projectId: string }> };
 
 const Body = z.object({
@@ -266,10 +272,10 @@ export async function POST(req: Request, ctx: Ctx) {
   let structured: z.infer<typeof OutputSchema>;
 
   try {
+    /* 先走无 response_format：少一次 API 侧约束、常比 json 模式更快，利于 Vercel 10s 内跑完；失败再试 json_object */
     const { content: c1 } = await openRouterComplete(chatMessages, {
       temperature: 0.25,
       maxTokens: 8192,
-      responseFormat: { type: "json_object" },
       skipRefusal: true,
     });
     let structuredInner = tryParseStructured(extractJsonObject(c1));
@@ -280,12 +286,13 @@ export async function POST(req: Request, ctx: Ctx) {
 
     if (needsRetry) {
       if (process.env.NODE_ENV === "development") {
-        console.warn("[ai/analyze] 首次结果不可用，改用无 JSON 强制模式再请求一次…");
+        console.warn("[ai/analyze] 首次解析不可用，再试 response_format: json_object…");
       }
       try {
         const { content: c2 } = await openRouterComplete(chatMessages, {
-          temperature: 0.35,
+          temperature: 0.3,
           maxTokens: 8192,
+          responseFormat: { type: "json_object" },
           skipRefusal: true,
         });
         const second = tryParseStructured(extractJsonObject(c2));

@@ -12,6 +12,8 @@ import {
   openRouterComplete,
 } from "@/lib/openrouter";
 
+export const maxDuration = 60;
+
 type Ctx = { params: Promise<{ orgId: string }> };
 
 const PostBody = z.object({

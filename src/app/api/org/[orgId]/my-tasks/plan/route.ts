@@ -12,6 +12,8 @@ import {
 } from "@/lib/openrouter";
 import { tasksInvolvingMember } from "@/lib/my-tasks-scope";
 
+export const maxDuration = 60;
+
 type Ctx = { params: Promise<{ orgId: string }> };
 
 const PostBody = z.object({
