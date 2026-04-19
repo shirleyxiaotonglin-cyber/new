@@ -165,7 +165,9 @@ async function postMultipart(
   const supabase = getSupabaseAdmin();
   if (!supabase) {
     return NextResponse.json(
-      { error: "未配置对象存储，无法发送文件。请配置 SUPABASE_URL 与 SUPABASE_SERVICE_ROLE_KEY。" },
+      {
+        error: "私信暂不支持发送附件：文件服务未开通。可先发送文字说明，或联系管理员开通存储。",
+      },
       { status: 503 },
     );
   }

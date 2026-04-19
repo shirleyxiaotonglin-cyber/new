@@ -8,8 +8,7 @@ export function authRouteError(e: unknown, context: string): NextResponse {
   if (msg.includes("JWT_SECRET")) {
     return NextResponse.json(
       {
-        error:
-          "服务器未配置 JWT_SECRET（至少 16 位）。请在 Vercel → Settings → Environment Variables 添加后 Redeploy。",
+        error: "登录服务未完成配置，暂时无法使用。请联系管理员处理。",
         code: "JWT_SECRET_MISSING",
       },
       { status: 503 },
@@ -23,7 +22,7 @@ export function authRouteError(e: unknown, context: string): NextResponse {
   ) {
     return NextResponse.json(
       {
-        error: "无法连接数据库，请检查 DATABASE_URL / DIRECT_URL 是否在托管平台已配置。",
+        error: "暂时无法连接到服务，请稍后再试。若持续出现，请联系管理员。",
         code: "DATABASE_UNREACHABLE",
       },
       { status: 503 },

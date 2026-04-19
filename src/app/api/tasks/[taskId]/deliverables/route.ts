@@ -84,8 +84,8 @@ export async function POST(req: Request, ctx: Ctx) {
   if (!supabase) {
     return NextResponse.json(
       {
-        error: "未配置对象存储",
-        hint: "请在环境变量中配置 SUPABASE_URL 与 SUPABASE_SERVICE_ROLE_KEY，并在 Supabase 创建 Storage 桶（默认名 deliverables，可改 SUPABASE_STORAGE_BUCKET）。",
+        error: "文件上传功能尚未开通",
+        hint: "请联系管理员配置文件存储；开通前您仍可编辑任务说明并在线下传递文件。",
       },
       { status: 503 },
     );

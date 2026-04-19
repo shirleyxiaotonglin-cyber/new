@@ -1024,62 +1024,37 @@ export function ProjectWorkspace({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-800">
                 <Sparkles className="h-4 w-4 text-red-600" />
-                AI 文本分析（OpenRouter）
+                智能任务解析
                 <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-normal text-gray-600">
-                  看板 / 列表 / 甘特等同源同步
+                  与看板 / 列表 / 甘特同源
                 </span>
               </div>
               {openRouterStatus ? (
                 openRouterStatus.configured ? (
-                  <span
-                    className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-xs text-green-800"
-                    title={
-                      openRouterStatus.effectiveHttpReferer != null &&
-                      openRouterStatus.effectiveHttpReferer !== ""
-                        ? `HTTP-Referer（发往 OpenRouter）: ${openRouterStatus.effectiveHttpReferer}`
-                        : openRouterStatus.omitAttribution
-                          ? "未发送 HTTP-Referer（OPENROUTER_OMIT_ATTRIBUTION）"
-                          : "服务端已配置 OPENROUTER_API_KEY"
-                    }
-                  >
-                    OpenRouter 已就绪 · {openRouterStatus.model}
+                  <span className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-xs text-green-800">
+                    智能助手已就绪
                   </span>
                 ) : (
-                  <span
-                    className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900"
-                    title="请在环境变量中设置 OPENROUTER_API_KEY"
-                  >
-                    未检测到 API Key
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-900">
+                    智能助手未开通
                   </span>
                 )
               ) : (
                 <span className="inline-flex items-center gap-1 text-xs text-gray-400">
                   <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                  检查连接…
+                  检测中…
                 </span>
               )}
             </div>
-            {openRouterStatus?.configured && openRouterStatus.refererSource === "default_localhost" ? (
-              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-950">
-                当前服务端发往 OpenRouter 的 HTTP-Referer 为默认{" "}
-                <code className="rounded bg-amber-100/80 px-0.5">localhost</code>
-                。若在 Vercel 等环境仍用此默认值，可能与「在其它网站同一模型可用」不一致；请设置{" "}
-                <code className="rounded bg-amber-100/80 px-0.5">NEXT_PUBLIC_APP_URL</code> 或{" "}
-                <code className="rounded bg-amber-100/80 px-0.5">OPENROUTER_HTTP_REFERER</code>{" "}
-                为你的线上 https 根地址。
+            {!openRouterStatus?.configured && openRouterStatus !== null && (
+              <p className="mt-2 rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2 text-[11px] leading-relaxed text-amber-950">
+                管理员开通智能助手后，您可把会议纪要与需求文字<strong>一键拆成多条任务</strong>。未开通时按钮不可用；您仍可使用「新建任务」手动录入。
               </p>
-            ) : null}
-            {openRouterStatus?.configured && openRouterStatus.omitAttribution ? (
-              <p className="mt-2 text-[11px] text-gray-600">
-                已开启 OPENROUTER_OMIT_ATTRIBUTION：请求不附带 HTTP-Referer / X-Title（仅建议用于排查）。
-              </p>
-            ) : null}
-            <p className="mt-2 text-xs text-gray-500">
-              粘贴会议纪要、需求片段或待办清单；解析结果与<strong>任务详情侧栏</strong>字段一一对应：任务名称、任务内容、负责人与协助人（支持姓名或邮箱）、当前状态、开始/截止日期、优先级、甘特进度（0–100%）。
-              点击「预览解析结果」后在下方表格核对，再「确认写入项目」——写入后会自动打开<strong>第一条</strong>任务详情便于核对。
-              需在环境变量中设置 <code className="rounded bg-gray-100 px-0.5">OPENROUTER_API_KEY</code>（本机
-              <code className="rounded bg-gray-100 px-0.5">.env</code>，Vercel 在 Settings → Environment
-              Variables，改后需 Redeploy）；未配置时接口会返回 503。
+            )}
+            <p className="mt-2 text-xs leading-relaxed text-gray-600">
+              <strong>能做什么：</strong>
+              粘贴会议纪要、需求片段或待办清单，系统尝试识别任务名称、任务内容、负责人与协助人（姓名或邮箱）、状态、起止日期、优先级与进度；解析结果可在表格中预览，确认后写入本项目。
+              写入成功后会自动打开<strong>第一条</strong>新任务便于核对。
             </p>
             {aiNotice ? (
               <p className="mt-2 text-xs text-green-700">{aiNotice}</p>

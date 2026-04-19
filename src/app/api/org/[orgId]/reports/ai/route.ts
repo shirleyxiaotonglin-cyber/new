@@ -234,7 +234,7 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json(
         {
           error:
-            "未检测到 OPENROUTER_API_KEY。请在 .env 或部署环境配置后重启 / Redeploy。",
+            "智能工作报告尚未开通，无法自动生成。如需使用，请联系管理员启用智能助手。",
           code: "MISSING_API_KEY",
         },
         { status: 503 },

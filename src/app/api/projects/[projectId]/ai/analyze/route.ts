@@ -250,8 +250,7 @@ export async function POST(req: Request, ctx: Ctx) {
     if (code === "MISSING_API_KEY") {
       return NextResponse.json(
         {
-          error:
-            "未检测到 OPENROUTER_API_KEY。本地写在 .env 后重启 dev；Vercel 请在 Environment Variables 添加同名变量（Production）并 Redeploy。",
+          error: "智能任务解析尚未开通，无法分析文本。如需使用，请联系管理员启用智能助手。",
           code: "MISSING_API_KEY",
         },
         { status: 503 },
@@ -259,28 +258,27 @@ export async function POST(req: Request, ctx: Ctx) {
     }
     if (isOpenRouterHttpError(e)) {
       const forbidden = e.httpStatus === 403;
-      const modHint =
-        e.moderationReasons?.length ?
-          ` 上游标记原因：${e.moderationReasons.join("；")}`
-        : "";
-      const flagHint = e.flaggedInputSnippet ?
-        ` 相关片段（截断）：${e.flaggedInputSnippet}`
-        : "";
-      const fallbackHint =
-        "若同一模型在其它网站能通、仅本接口 403：请求是从服务器发往 OpenRouter，与浏览器直连不同（HTTP-Referer、出口 IP 都可能不一样）。请在环境变量中设置 OPENROUTER_HTTP_REFERER 或 NEXT_PUBLIC_APP_URL 为你的 https 站点根地址；或临时设 OPENROUTER_OMIT_ATTRIBUTION=1 试是否因 Referer 触发。托管平台（如 Vercel）的出口 IP 与本地不同也可能触发上游策略。亦可更换 OPENROUTER_MODEL 或设置 OPENROUTER_FALLBACK_MODEL；若属内容审核请改写输入。";
+      const userFriendly =
+        forbidden ?
+          "内容未能通过智能服务校验，请换一种表述或减少敏感信息后重试。"
+        : "智能服务暂时不可用，请稍后重试。若多次失败，请联系管理员。";
 
       return NextResponse.json(
         {
-          error: forbidden ? `${e.message}${modHint}${flagHint}` : e.message,
+          error: userFriendly,
           code: forbidden ? "OPENROUTER_FORBIDDEN" : "OPENROUTER_HTTP_ERROR",
-          ...(forbidden ? { hint: fallbackHint } : {}),
         },
         { status: 502 },
       );
     }
 
-    const msg = e instanceof Error ? e.message : "OpenRouter 调用失败";
-    return NextResponse.json({ error: msg, code: "OPENROUTER_ERROR" }, { status: 502 });
+    return NextResponse.json(
+      {
+        error: "智能解析失败，请稍后重试或简化输入内容。",
+        code: "OPENROUTER_ERROR",
+      },
+      { status: 502 },
+    );
   }
 
   let structured: z.infer<typeof OutputSchema>;

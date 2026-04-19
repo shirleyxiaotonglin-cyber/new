@@ -27,7 +27,7 @@ async function redirectAfterAuth(router: ReturnType<typeof useRouter>) {
   return {
     ok: false as const,
     error:
-      "当前账号还没有组织。请先完成注册创建工作空间，或在服务器执行 npm run db:seed（演示数据）。",
+      "当前账号还没有加入任何工作空间。请完成注册并创建组织，或联系管理员邀请您加入。",
   };
 }
 

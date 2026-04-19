@@ -161,8 +161,7 @@ export function ProjectAssetsHub({
 
       {!storageConfigured ?
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          未配置 Supabase Storage，列表中的下载/预览链接可能不可用。请在部署环境配置 SUPABASE_URL 与
-          SUPABASE_SERVICE_ROLE_KEY。
+          文件存储未完全开通时，预览与下载链接可能不可用。可先联系管理员；重要文件建议在任务交付物上传成功后再归档。
         </p>
       : null}
 

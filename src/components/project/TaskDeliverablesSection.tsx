@@ -97,7 +97,7 @@ export function TaskDeliverablesSection({
     const list = Array.from(files);
     if (list.length === 0) return;
     if (!storageConfigured) {
-      setError("未配置 Supabase Storage，无法上传");
+      setError("文件上传未开通，暂时无法上传。可把说明写在「任务内容」或请管理员开通存储。");
       return;
     }
     setUploading(true);
@@ -165,7 +165,7 @@ export function TaskDeliverablesSection({
       </div>
       {!storageConfigured ?
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-[11px] text-amber-950">
-          未配置对象存储（SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY）。仅可查看元数据，无法上传/下载文件。
+          文件云存储尚未开通：暂无法上传或下载附件，列表中可能仅有记录。如需使用请先联系管理员；也可在「任务内容」里说明线下交付方式。
         </p>
       : null}
 
